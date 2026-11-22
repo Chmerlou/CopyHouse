@@ -22,6 +22,8 @@ services:
     environment:
       DATABASE_URL: postgresql://copyhouse:copyhouse@postgres:5432/copyhouse
       PORT: 3000
+      JWT_SECRET: dev-copyhouse-jwt-secret
+      UPLOAD_DIR: /app/uploads
     depends_on:
       postgres:
         condition: service_healthy

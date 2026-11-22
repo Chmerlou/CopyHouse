@@ -9,7 +9,14 @@ datasource db {
 
 enum UserRole {
   CLIENT
-  PARTNER
+  PrintProvider
+  ADMIN
+}
+
+enum PrintPointStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum ColorMode {
@@ -23,30 +30,38 @@ enum OrderStatus {
   PRINTING
   READY
   ISSUED
+  CANCELLED
 }
 
 enum PaymentStatus {
   PENDING
   SUCCEEDED
   FAILED
+  REFUNDED
 }
 
 enum PaymentProvider {
   MOCK
 }
 
-model User {
-  id            String       @id @default(uuid()) @db.Uuid
-  email         String       @unique
-  passwordHash  String       @map("password_hash")
-  role          UserRole
-  pickupPointId String?      @map("pickup_point_id") @db.Uuid
-  pickupPoint   PickupPoint? @relation(fields: [pickupPointId], references: [id])
-  documents     Document[]
-  orders        Order[]
-  createdAt     DateTime     @default(now()) @map("created_at")
+enum IdempotencyStatus {
+  IN_PROGRESS
+  COMPLETED
+}
 
-  @@index([pickupPointId])
+model User {
+  id             String            @id @default(uuid()) @db.Uuid
+  email          String            @unique
+  passwordHash   String            @map("password_hash")
+  role           UserRole
+  city           String
+  createdAt      DateTime          @default(now()) @map("created_at")
+  documents      Document[]
+  orders         Order[]
+  printPoints    PrintPoint[]
+  quotes         Quote[]
+  idempotencyKeys IdempotencyRecord[]
+
   @@map("users")
 }
 
@@ -55,70 +70,101 @@ model Document {
   userId       String      @map("user_id") @db.Uuid
   user         User        @relation(fields: [userId], references: [id])
   originalName String      @map("original_name")
-  storagePath  String      @map("storage_path")
+  storageKey   String      @map("storage_key")
   mimeType     String      @map("mime_type")
   sizeBytes    Int         @map("size_bytes")
   pageCount    Int         @map("page_count")
   createdAt    DateTime    @default(now()) @map("created_at")
-  orderItems   OrderItem[]
+  orders       Order[]
+  quotes       Quote[]
 
   @@index([userId])
   @@map("documents")
 }
 
-model PickupPoint {
-  id                String   @id @default(uuid()) @db.Uuid
+model PrintPoint {
+  id                String           @id @default(uuid()) @db.Uuid
+  ownerId           String           @map("owner_id") @db.Uuid
+  owner             User             @relation(fields: [ownerId], references: [id])
   name              String
+  city              String
   address           String
-  workingHours      String   @map("working_hours")
-  pricePerPageBw    Int      @map("price_per_page_bw")
-  pricePerPageColor Int      @map("price_per_page_color")
-  commissionBps     Int      @map("commission_bps")
-  isActive          Boolean  @default(true) @map("is_active")
-  createdAt         DateTime @default(now()) @map("created_at")
-  users             User[]
+  workingHours      String           @map("working_hours")
+  pricePerPageBw    Int              @map("price_per_page_bw")
+  pricePerPageColor Int              @map("price_per_page_color")
+  commissionBps     Int              @default(0) @map("commission_bps")
+  status            PrintPointStatus @default(PENDING)
+  isActive          Boolean          @default(false) @map("is_active")
+  rejectionReason   String?          @map("rejection_reason")
+  createdAt         DateTime         @default(now()) @map("created_at")
   orders            Order[]
+  offers            QuoteOffer[]
 
-  @@map("pickup_points")
+  @@index([ownerId])
+  @@index([city, status, isActive])
+  @@map("print_points")
+}
+
+model Quote {
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String      @map("user_id") @db.Uuid
+  user       User        @relation(fields: [userId], references: [id])
+  documentId String      @map("document_id") @db.Uuid
+  document   Document    @relation(fields: [documentId], references: [id])
+  city       String
+  pageCount  Int         @map("page_count")
+  colorMode  ColorMode   @map("color_mode")
+  copies     Int
+  expiresAt  DateTime    @map("expires_at")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  offers     QuoteOffer[]
+
+  @@index([userId])
+  @@map("quotes")
+}
+
+model QuoteOffer {
+  id           String     @id @default(uuid()) @db.Uuid
+  quoteId      String     @map("quote_id") @db.Uuid
+  quote        Quote      @relation(fields: [quoteId], references: [id])
+  printPointId String     @map("print_point_id") @db.Uuid
+  printPoint   PrintPoint @relation(fields: [printPointId], references: [id])
+  pricePerPage Int        @map("price_per_page")
+  total        Int
+
+  @@unique([quoteId, printPointId])
+  @@index([quoteId])
+  @@map("quote_offers")
 }
 
 model Order {
-  id            String      @id @default(uuid()) @db.Uuid
-  userId        String      @map("user_id") @db.Uuid
-  user          User        @relation(fields: [userId], references: [id])
-  pickupPointId String      @map("pickup_point_id") @db.Uuid
-  pickupPoint   PickupPoint @relation(fields: [pickupPointId], references: [id])
-  status        OrderStatus @default(CREATED)
-  pageCount     Int         @map("page_count")
-  pricePerPage  Int         @map("price_per_page")
-  subtotal      Int
-  commission    Int
-  total         Int
-  pickupCode    String?     @unique @map("pickup_code")
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
-  items         OrderItem[]
-  payment       Payment?
+  id               String      @id @default(uuid()) @db.Uuid
+  userId           String      @map("user_id") @db.Uuid
+  user             User        @relation(fields: [userId], references: [id])
+  printPointId     String      @map("print_point_id") @db.Uuid
+  printPoint       PrintPoint  @relation(fields: [printPointId], references: [id])
+  documentId       String      @map("document_id") @db.Uuid
+  document         Document    @relation(fields: [documentId], references: [id])
+  colorMode        ColorMode   @map("color_mode")
+  copies           Int
+  pageCount        Int         @map("page_count")
+  unitPrice        Int         @map("unit_price")
+  subtotal         Int
+  commissionBps    Int         @map("commission_bps")
+  commissionAmount Int         @map("commission_amount")
+  total            Int
+  currency         String      @default("RUB")
+  status           OrderStatus @default(CREATED)
+  pickupCode       String?     @unique @map("pickup_code")
+  cancelReason     String?     @map("cancel_reason")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+  payment          Payment?
+  idempotencyRecords IdempotencyRecord[]
 
-  @@index([userId])
-  @@index([pickupPointId, status])
+  @@index([userId, createdAt])
+  @@index([printPointId, status])
   @@map("orders")
-}
-
-model OrderItem {
-  id         String    @id @default(uuid()) @db.Uuid
-  orderId    String    @map("order_id") @db.Uuid
-  order      Order     @relation(fields: [orderId], references: [id])
-  documentId String    @map("document_id") @db.Uuid
-  document   Document  @relation(fields: [documentId], references: [id])
-  colorMode  ColorMode @map("color_mode")
-  copies     Int
-  pageCount  Int       @map("page_count")
-  unitPrice  Int       @map("unit_price")
-  lineTotal  Int       @map("line_total")
-
-  @@index([orderId])
-  @@map("order_items")
 }
 
 model Payment {
@@ -129,6 +175,26 @@ model Payment {
   status    PaymentStatus
   amount    Int
   createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
 
   @@map("payments")
+}
+
+model IdempotencyRecord {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  user           User              @relation(fields: [userId], references: [id])
+  key            String
+  requestHash    String            @map("request_hash")
+  status         IdempotencyStatus
+  responseStatus Int?              @map("response_status")
+  responseBody   Json?             @map("response_body")
+  orderId        String?           @map("order_id") @db.Uuid
+  order          Order?            @relation(fields: [orderId], references: [id])
+  createdAt      DateTime          @default(now()) @map("created_at")
+  expiresAt      DateTime          @map("expires_at")
+
+  @@unique([userId, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
 }

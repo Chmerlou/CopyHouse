@@ -21,5 +21,15 @@ export default [
         },
       },
     },
+    rules: {
+      // ESLint не видит идентификаторы внутри декораторов аргументов: @Inject(), @Body().
+      'no-unused-vars': [
+        'error',
+        {
+          varsIgnorePattern:
+            '^(Inject|Body|Req|Res|Param|UploadedFile|AuthService|JwtService|PrismaService|ConfigService|Reflector|DocumentsService)$',
+        },
+      ],
+    },
   },
 ];
