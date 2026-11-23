@@ -108,7 +108,7 @@ describe("UploadForm", () => {
       expect.objectContaining({ id: "document-lecture.pdf" }),
       expect.objectContaining({ id: "document-slides.pdf" }),
     ]);
-    expect(screen.getByRole("link", { name: "Настроить первый файл" }))
+    expect(screen.getByRole("link", { name: "Выбрать точку" }))
       .toHaveAttribute("href", "/points?documentId=document-lecture.pdf");
   });
 

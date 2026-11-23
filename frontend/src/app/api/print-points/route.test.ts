@@ -78,4 +78,28 @@ describe("GET /api/print-points", () => {
       },
     });
   });
+
+  it.each([
+    "page=0",
+    "page=1.5",
+    "limit=0",
+    "limit=101",
+    "q=",
+    `q=${"a".repeat(201)}`,
+  ])("rejects an invalid query: %s", async (query) => {
+    auth.getCurrentUser.mockResolvedValue({
+      id: "client-id",
+      email: "client@copyhouse.test",
+      role: "CLIENT",
+      city: "Москва",
+    });
+
+    const response = await GET(new NextRequest(`http://localhost/api/print-points?${query}`));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      code: "VALIDATION_ERROR",
+      message: "Проверьте заполненные поля",
+    }));
+  });
 });

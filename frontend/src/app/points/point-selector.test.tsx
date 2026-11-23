@@ -3,23 +3,19 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { printPointFixtures } from "@/shared/api/contract-fixtures";
 import {
+  listPrintPoints,
   PointSelector,
   SELECTED_PRINT_POINT_KEY,
   type ListPrintPoints,
 } from "./point-selector";
 
-const response = {
-  items: printPointFixtures.slice(0, 2),
-  pagination: {
-    page: 1,
-    limit: 20,
-    totalItems: 2,
-    totalPages: 1,
-  },
-};
+const response = printPointFixtures.slice(0, 2);
 
 describe("PointSelector", () => {
-  beforeEach(() => sessionStorage.clear());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    sessionStorage.clear();
+  });
 
   it("shows a loading state while points are requested", () => {
     const listPrintPoints = vi.fn<ListPrintPoints>(() => new Promise(() => undefined));
@@ -42,6 +38,30 @@ describe("PointSelector", () => {
     expect(screen.getByText(/20,00\s*₽/)).toBeInTheDocument();
   });
 
+  it("loads every catalog page before rendering the selector", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        items: printPointFixtures.slice(0, 2),
+        pagination: { page: 1, limit: 2, totalItems: 3, totalPages: 2 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        items: printPointFixtures.slice(2, 3),
+        pagination: { page: 2, limit: 2, totalItems: 3, totalPages: 2 },
+      }), { status: 200 }));
+
+    await expect(listPrintPoints()).resolves.toEqual(printPointFixtures.slice(0, 3));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/print-points?page=1&limit=100",
+      { cache: "no-store" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/print-points?page=2&limit=100",
+      { cache: "no-store" },
+    );
+  });
+
   it("saves and restores the selected point", async () => {
     const user = userEvent.setup();
     const listPrintPoints = vi.fn<ListPrintPoints>().mockResolvedValue(response);
@@ -62,10 +82,7 @@ describe("PointSelector", () => {
   });
 
   it("shows the approved empty catalogue text", async () => {
-    const listPrintPoints = vi.fn<ListPrintPoints>().mockResolvedValue({
-      items: [],
-      pagination: { page: 1, limit: 20, totalItems: 0, totalPages: 0 },
-    });
+    const listPrintPoints = vi.fn<ListPrintPoints>().mockResolvedValue([]);
 
     render(<PointSelector listPrintPoints={listPrintPoints} />);
 

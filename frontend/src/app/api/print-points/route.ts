@@ -4,14 +4,28 @@ import { printPointFixtures } from "@/shared/api/contract-fixtures";
 import { apiError } from "@/shared/auth/http";
 import { apiBaseUrl, dataSource, getCurrentUser, SESSION_COOKIE } from "@/shared/auth/server";
 
+function positiveInteger(value: string | null, fallback: number, maximum?: number) {
+  if (value === null) return fallback;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1 || (maximum !== undefined && number > maximum)) {
+    return null;
+  }
+  return number;
+}
+
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return apiError("UNAUTHORIZED", "Требуется авторизация", 401);
 
   if (dataSource === "mock") {
-    const page = Math.max(1, Number(request.nextUrl.searchParams.get("page")) || 1);
-    const limit = Math.min(100, Math.max(1, Number(request.nextUrl.searchParams.get("limit")) || 20));
-    const query = request.nextUrl.searchParams.get("q")?.trim().toLocaleLowerCase("ru") ?? "";
+    const page = positiveInteger(request.nextUrl.searchParams.get("page"), 1);
+    const limit = positiveInteger(request.nextUrl.searchParams.get("limit"), 20, 100);
+    const rawQuery = request.nextUrl.searchParams.get("q");
+    const trimmedQuery = rawQuery?.trim() ?? "";
+    if (page === null || limit === null || (rawQuery !== null && (!trimmedQuery || rawQuery.length > 200))) {
+      return apiError("VALIDATION_ERROR", "Проверьте заполненные поля", 400);
+    }
+    const query = trimmedQuery.toLocaleLowerCase("ru");
     const city = user.city.trim().toLocaleLowerCase("ru");
     const available = printPointFixtures.filter((point) => {
       const matchesCity = point.city.trim().toLocaleLowerCase("ru") === city;

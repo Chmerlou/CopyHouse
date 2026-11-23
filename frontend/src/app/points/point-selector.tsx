@@ -9,12 +9,12 @@ export const SELECTED_PRINT_POINT_KEY = "copyhouse.selectedPrintPointId";
 type PrintPoint = ApiSchema<"PrintPointPublic">;
 type PrintPointList = ApiSchema<"PrintPointPublicList">;
 
-export type ListPrintPoints = () => Promise<PrintPointList>;
+export type ListPrintPoints = () => Promise<PrintPoint[]>;
 
-export async function listPrintPoints(): Promise<PrintPointList> {
+async function requestPrintPointPage(page: number): Promise<PrintPointList> {
   let response: Response;
   try {
-    response = await fetch("/api/print-points", { cache: "no-store" });
+    response = await fetch(`/api/print-points?page=${page}&limit=100`, { cache: "no-store" });
   } catch {
     throw new Error("Нет соединения. Проверьте интернет и повторите попытку.");
   }
@@ -25,6 +25,19 @@ export async function listPrintPoints(): Promise<PrintPointList> {
   }
 
   return response.json() as Promise<PrintPointList>;
+}
+
+export async function listPrintPoints(): Promise<PrintPoint[]> {
+  const firstPage = await requestPrintPointPage(1);
+  if (firstPage.pagination.totalPages <= 1) return firstPage.items;
+
+  const remainingPages = await Promise.all(
+    Array.from(
+      { length: firstPage.pagination.totalPages - 1 },
+      (_, index) => requestPrintPointPage(index + 2),
+    ),
+  );
+  return [firstPage, ...remainingPages].flatMap((page) => page.items);
 }
 
 const money = new Intl.NumberFormat("ru-RU", {
@@ -50,9 +63,9 @@ export function PointSelector({
     requestPoints().then((result) => {
       if (!active) return;
       const storedId = sessionStorage.getItem(SELECTED_PRINT_POINT_KEY);
-      setPoints(result.items);
-      setSelectedId(result.items.some((point) => point.id === storedId) ? storedId : null);
-      if (storedId && !result.items.some((point) => point.id === storedId)) {
+      setPoints(result);
+      setSelectedId(result.some((point) => point.id === storedId) ? storedId : null);
+      if (storedId && !result.some((point) => point.id === storedId)) {
         sessionStorage.removeItem(SELECTED_PRINT_POINT_KEY);
       }
       setStatus("ready");

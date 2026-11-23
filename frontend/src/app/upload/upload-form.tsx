@@ -307,7 +307,7 @@ export function UploadForm({
                   className={styles.primaryButton}
                   href={`${routes.points}?documentId=${encodeURIComponent(resultsByFile[fileKey(files[0])].id)}`}
                 >
-                  Настроить первый файл
+                  Выбрать точку
                 </Link>
               </div>
             ) : null}
