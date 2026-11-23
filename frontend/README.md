@@ -8,4 +8,4 @@
 npm run dev
 ```
 
-Проверки: `npm run lint`, `npm run typecheck`, `npm run build`.
+Проверки: `npm test`, `npm run lint`, `npm run typecheck`, `npm run build`.

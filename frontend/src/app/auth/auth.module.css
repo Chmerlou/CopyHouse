@@ -1,0 +1,98 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background:
+    linear-gradient(rgb(26 111 209 / 12%), transparent 40%),
+    var(--color-canvas);
+}
+
+.shell {
+  width: min(100%, 460px);
+}
+
+.brand {
+  display: inline-block;
+  margin-bottom: 24px;
+  color: var(--color-ink);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.card h1 {
+  margin: 0;
+  color: var(--color-heading);
+  font-size: clamp(30px, 8vw, 40px);
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.intro {
+  margin: 12px 0 24px;
+  color: var(--color-body);
+  line-height: 1.5;
+}
+
+.success {
+  border: 1px solid #b7d6b9;
+  border-radius: 8px;
+  background: #eff8ef;
+  color: #276a31;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.form {
+  display: grid;
+  gap: 18px;
+}
+
+.formError {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.switchCopy {
+  margin: 0;
+  color: var(--color-body);
+  font-size: 14px;
+  text-align: center;
+}
+
+.switchCopy a { color: var(--color-ink); }
+
+.roleGroup {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.roleGroup legend {
+  margin-bottom: 8px;
+  color: var(--color-heading);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.roleGroup label {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-edge);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.roleGroup input { accent-color: var(--color-sky); }
+
+@media (max-width: 420px) {
+  .roleGroup { grid-template-columns: 1fr; }
+}

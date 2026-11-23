@@ -5,7 +5,7 @@ import styles from "./page.module.css";
 const orderSteps = [
   {
     title: "Загрузите файл",
-    text: "PDF или DOCX останется в заказе, пока вы выбираете параметры.",
+    text: "PDF останется в заказе, пока вы выбираете параметры.",
   },
   {
     title: "Сравните точки",
@@ -50,12 +50,12 @@ export default function Home() {
             <a className={styles.navLink} href="#how-it-works">
               Как работает
             </a>
-            <a className={styles.navLink} href="#how-it-works">
+            <Link className={styles.navLink} href="/points">
               Точки печати
-            </a>
-            <a className={styles.loginLink} href="#how-it-works">
+            </Link>
+            <Link className={styles.loginLink} href="/login">
               Войти
-            </a>
+            </Link>
           </nav>
         </header>
 
@@ -68,12 +68,12 @@ export default function Home() {
             CopyHouse находит точку печати рядом и показывает цену до оплаты.
           </p>
           <div className={styles.actions}>
-            <a className={styles.primaryAction} href="#how-it-works">
+            <Link className={styles.primaryAction} href="/upload">
               Загрузить документ
-            </a>
-            <a className={styles.secondaryAction} href="#how-it-works">
+            </Link>
+            <Link className={styles.secondaryAction} href="/points">
               Посмотреть точки
-            </a>
+            </Link>
           </div>
         </div>
 

@@ -1,12 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --paper: #f7f5ee;
-  --ink: #13151a;
-  --ink-muted: #42454d;
-  --sky: #1979df;
+  --color-canvas: #f5f5f2;
+  --color-ink: #171717;
+  --color-heading: #4f4d4c;
+  --color-body: #646261;
+  --color-faint: #8e8c8b;
+  --color-edge: #e7e7e3;
+  --color-panel: #f1f1ee;
+  --color-raised: #fbfbf8;
+  --color-sky: #1a6fd1;
+  --color-accent: #d6fa31;
+  --color-danger: #a62f2f;
+  --paper: var(--color-canvas);
+  --ink: var(--color-ink);
+  --ink-muted: var(--color-body);
+  --sky: var(--color-sky);
   --sky-deep: #135eb5;
-  --accent: #d6fa31;
+  --accent: var(--color-accent);
   --focus: #ffe14f;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --background: var(--paper);
