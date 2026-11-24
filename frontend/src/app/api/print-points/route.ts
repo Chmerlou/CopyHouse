@@ -15,7 +15,6 @@ function positiveInteger(value: string | null, fallback: number, maximum?: numbe
 
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
-  if (!user) return apiError("UNAUTHORIZED", "Требуется авторизация", 401);
 
   if (dataSource === "mock") {
     const page = positiveInteger(request.nextUrl.searchParams.get("page"), 1);
@@ -26,9 +25,9 @@ export async function GET(request: NextRequest) {
       return apiError("VALIDATION_ERROR", "Проверьте заполненные поля", 400);
     }
     const query = trimmedQuery.toLocaleLowerCase("ru");
-    const city = user.city.trim().toLocaleLowerCase("ru");
+    const city = user?.city.trim().toLocaleLowerCase("ru") ?? null;
     const available = printPointFixtures.filter((point) => {
-      const matchesCity = point.city.trim().toLocaleLowerCase("ru") === city;
+      const matchesCity = city === null || point.city.trim().toLocaleLowerCase("ru") === city;
       const matchesQuery = !query || `${point.name} ${point.address}`.toLocaleLowerCase("ru").includes(query);
       return matchesCity && matchesQuery;
     });
@@ -48,7 +47,7 @@ export async function GET(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   try {
     const backend = await fetch(`${apiBaseUrl}/print-points${request.nextUrl.search}`, {
-      headers: { authorization: `Bearer ${token}` },
+      headers: token ? { authorization: `Bearer ${token}` } : undefined,
       cache: "no-store",
     });
     return NextResponse.json(await backend.json(), { status: backend.status });

@@ -38,6 +38,18 @@ describe("PointSelector", () => {
     expect(screen.getByText(/20,00\s*₽/)).toBeInTheDocument();
   });
 
+  it("renders a read-only catalog without changing saved selection", async () => {
+    sessionStorage.setItem(SELECTED_PRINT_POINT_KEY, "saved-point");
+    const listPrintPoints = vi.fn<ListPrintPoints>().mockResolvedValue(response);
+
+    render(<PointSelector listPrintPoints={listPrintPoints} selectable={false} />);
+
+    expect(await screen.findByText("CopyHouse Дорожная")).toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByText("Выбрать")).not.toBeInTheDocument();
+    expect(sessionStorage.getItem(SELECTED_PRINT_POINT_KEY)).toBe("saved-point");
+  });
+
   it("loads every catalog page before rendering the selector", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response(JSON.stringify({

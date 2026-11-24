@@ -48,8 +48,10 @@ const money = new Intl.NumberFormat("ru-RU", {
 
 export function PointSelector({
   listPrintPoints: requestPoints = listPrintPoints,
+  selectable = true,
 }: {
   listPrintPoints?: ListPrintPoints;
+  selectable?: boolean;
 }) {
   const [points, setPoints] = useState<PrintPoint[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -62,10 +64,10 @@ export function PointSelector({
 
     requestPoints().then((result) => {
       if (!active) return;
-      const storedId = sessionStorage.getItem(SELECTED_PRINT_POINT_KEY);
+      const storedId = selectable ? sessionStorage.getItem(SELECTED_PRINT_POINT_KEY) : null;
       setPoints(result);
       setSelectedId(result.some((point) => point.id === storedId) ? storedId : null);
-      if (storedId && !result.some((point) => point.id === storedId)) {
+      if (selectable && storedId && !result.some((point) => point.id === storedId)) {
         sessionStorage.removeItem(SELECTED_PRINT_POINT_KEY);
       }
       setStatus("ready");
@@ -78,7 +80,7 @@ export function PointSelector({
     return () => {
       active = false;
     };
-  }, [requestPoints, requestVersion]);
+  }, [requestPoints, requestVersion, selectable]);
 
   function reload() {
     setStatus("loading");
@@ -123,17 +125,29 @@ export function PointSelector({
     );
   }
 
-  return (
-    <>
-      <fieldset className={styles.fieldset}>
-        <legend className={styles.srOnly}>Выберите одну точку печати</legend>
-        <div className={styles.pointList}>
-          {points.map((point) => {
-            const isSelected = point.id === selectedId;
-            return (
+  const pointList = (
+    <ul className={styles.pointList}>
+      {points.map((point) => {
+        const isSelected = point.id === selectedId;
+        const details = (
+          <>
+            <span className={styles.pointMain}>
+              <strong>{point.name}</strong>
+              <span>{point.address}</span>
+              <span className={styles.hours}>{point.workingHours}</span>
+            </span>
+            <span className={styles.prices}>
+              <span><small>Ч/б страница</small>{money.format(point.pricePerPageBw / 100)}</span>
+              <span><small>Цветная страница</small>{money.format(point.pricePerPageColor / 100)}</span>
+            </span>
+          </>
+        );
+
+        return (
+          <li key={point.id}>
+            {selectable ? (
               <label
                 className={`${styles.point} ${isSelected ? styles.selected : ""}`}
-                key={point.id}
               >
                 <input
                   type="radio"
@@ -142,20 +156,27 @@ export function PointSelector({
                   checked={isSelected}
                   onChange={() => selectPoint(point.id)}
                 />
-                <span className={styles.pointMain}>
-                  <strong>{point.name}</strong>
-                  <span>{point.address}</span>
-                  <span className={styles.hours}>{point.workingHours}</span>
-                </span>
-                <span className={styles.prices}>
-                  <span><small>Ч/б страница</small>{money.format(point.pricePerPageBw / 100)}</span>
-                  <span><small>Цветная страница</small>{money.format(point.pricePerPageColor / 100)}</span>
-                </span>
+                {details}
                 <span className={styles.choice}>{isSelected ? "Выбрано" : "Выбрать"}</span>
               </label>
-            );
-          })}
-        </div>
+            ) : (
+              <article className={`${styles.point} ${styles.readOnly}`}>{details}</article>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+
+  if (!selectable) {
+    return <section className={styles.fieldset} aria-label="Точки печати">{pointList}</section>;
+  }
+
+  return (
+    <>
+      <fieldset className={styles.fieldset}>
+        <legend className={styles.srOnly}>Выберите одну точку печати</legend>
+        {pointList}
       </fieldset>
       <p className={styles.selectionStatus} aria-live="polite">
         {selectedId

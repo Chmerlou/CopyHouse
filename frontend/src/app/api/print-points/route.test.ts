@@ -25,16 +25,21 @@ import { GET } from "./route";
 describe("GET /api/print-points", () => {
   beforeEach(() => auth.getCurrentUser.mockReset());
 
-  it("requires an authenticated user", async () => {
+  it("returns the public catalog to a guest", async () => {
     auth.getCurrentUser.mockResolvedValue(null);
 
     const response = await GET(new NextRequest("http://localhost/api/print-points"));
 
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual(expect.objectContaining({
-      code: "UNAUTHORIZED",
-      message: "Требуется авторизация",
-    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      items: printPointFixtures,
+      pagination: {
+        page: 1,
+        limit: 20,
+        totalItems: 5,
+        totalPages: 1,
+      },
+    });
   });
 
   it("returns a paginated catalog for the profile city", async () => {

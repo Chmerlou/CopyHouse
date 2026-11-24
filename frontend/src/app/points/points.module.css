@@ -94,7 +94,12 @@
 .pointList {
   display: grid;
   gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
+
+.pointList > li { min-width: 0; }
 
 .point {
   display: grid;
@@ -127,6 +132,11 @@
 .selected {
   border-color: rgb(26 111 209 / 48%);
   background: #f3f7fc;
+}
+
+.readOnly {
+  grid-template-columns: minmax(0, 1fr) auto;
+  cursor: default;
 }
 
 .pointMain,
@@ -211,6 +221,45 @@
   line-height: 1.45;
 }
 
+.catalogAction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 24px;
+  border-top: 1px solid var(--color-edge);
+  padding-top: 20px;
+}
+
+.catalogAction p {
+  max-width: 56ch;
+  margin: 0;
+  color: var(--color-body);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.catalogAction a {
+  display: inline-grid;
+  min-height: 41px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #383838;
+  border-radius: 8px;
+  background: linear-gradient(rgb(32 32 32 / 10%), rgb(32 32 32 / 10%)), linear-gradient(#4f4f4f, rgb(32 32 32 / 85%));
+  box-shadow: inset 0 2px 0 rgb(255 255 255 / 24%), 0 3px 4px rgb(0 0 0 / 16%);
+  color: rgb(255 255 255 / 92%);
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.catalogAction a:focus-visible {
+  outline: 2px solid var(--color-sky);
+  outline-offset: 3px;
+}
+
 .skeletonList {
   display: grid;
   gap: 12px;
@@ -262,7 +311,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .point:hover {
+  .point:not(.readOnly):hover {
     border-color: #b9cbe0;
     transform: translateY(-1px);
   }
@@ -335,6 +384,14 @@
   .state {
     padding: 24px 20px;
   }
+
+  .catalogAction {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .catalogAction a { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
