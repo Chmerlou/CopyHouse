@@ -55,6 +55,7 @@ model User {
   passwordHash   String            @map("password_hash")
   role           UserRole
   city           String
+  tokenVersion   Int               @default(0) @map("token_version")
   createdAt      DateTime          @default(now()) @map("created_at")
   documents      Document[]
   orders         Order[]

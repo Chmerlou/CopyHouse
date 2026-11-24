@@ -22,14 +22,18 @@ class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
-    if (!user) {
+    if (!user || !tokenVersionMatches(payload, user)) {
       throw apiError('UNAUTHORIZED');
     }
     return user;
   }
 }
 
+function tokenVersionMatches(payload, user) {
+  return Number.isInteger(payload.tv) && payload.tv === user.tokenVersion;
+}
+
 Inject(ConfigService)(JwtStrategy, undefined, 0);
 Inject(PrismaService)(JwtStrategy, undefined, 1);
 
-module.exports = { JwtStrategy };
+module.exports = { JwtStrategy, tokenVersionMatches };

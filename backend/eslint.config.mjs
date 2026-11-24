@@ -27,7 +27,7 @@ export default [
         'error',
         {
           varsIgnorePattern:
-            '^(Inject|Body|Req|Res|Param|UploadedFile|AuthService|JwtService|PrismaService|ConfigService|Reflector|DocumentsService)$',
+            '^(Inject|Body|Req|Res|Param|Query|UploadedFile|AuthService|JwtService|PrismaService|ConfigService|Reflector|DocumentsService|PrintPointsService)$',
         },
       ],
     },

@@ -73,7 +73,7 @@ class AuthService {
     }
 
     const accessToken = await this.jwt.signAsync(
-      { sub: user.id, role: user.role },
+      { sub: user.id, role: user.role, tv: user.tokenVersion },
       { expiresIn: TOKEN_TTL_SECONDS },
     );
 
@@ -96,6 +96,20 @@ class AuthService {
     return this.prisma.user
       .update({ where: { id: user.id }, data: { city } })
       .then(toUser);
+  }
+
+  async logout(user) {
+    try {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { tokenVersion: { increment: 1 } },
+      });
+    } catch (error) {
+      if (error && error.code === 'P2025') {
+        throw apiError('UNAUTHORIZED');
+      }
+      throw error;
+    }
   }
 }
 

@@ -20,6 +20,13 @@ class AuthController {
     return this.authService.login(body || {});
   }
 
+  @Post('logout')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard)
+  logout(request) {
+    return this.authService.logout(request.user);
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   me(request) {
@@ -36,6 +43,7 @@ class AuthController {
 Inject(AuthService)(AuthController, undefined, 0);
 Body()(AuthController.prototype, 'register', 0);
 Body()(AuthController.prototype, 'login', 0);
+Req()(AuthController.prototype, 'logout', 0);
 Req()(AuthController.prototype, 'me', 0);
 Req()(AuthController.prototype, 'updateMe', 0);
 Body()(AuthController.prototype, 'updateMe', 1);
