@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { getCurrentUser } from "@/shared/auth/server";
 import { routes } from "@/shared/routes";
 import { PointSelector } from "./point-selector";
+import { PixelSprite } from "../pixel-sprite";
 import styles from "./points.module.css";
 
 export type PointsSearchParams = Promise<{ documentId?: string | string[] }>;
@@ -19,28 +20,30 @@ export async function PointsContent({ searchParams }: { searchParams: PointsSear
       : { href: routes.provider, label: "Вернуться в панель" };
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <Link className={styles.logo} href={routes.home} aria-label="CopyHouse, главная">
-          COPYHOUSE
-        </Link>
-        <span className={styles.step}>
-          {canSelect ? "Новый заказ · шаг 2 из 4" : "Каталог · публичные цены"}
-        </span>
-      </header>
-
+    <main id="main-content" tabIndex={-1} className={styles.page}>
       <div className={styles.shell}>
-        <Link className={styles.backLink} href={canSelect ? routes.upload : routes.home}>
-          {canSelect ? "Назад к файлам" : "На главную"}
-        </Link>
-        <div className={styles.heading}>
-          <h1>{canSelect ? <>Выберите <span>точку печати</span></> : <>Точки <span>печати</span></>}</h1>
-          <p>{canSelect
-            ? "Показываем доступные точки в городе из вашего профиля. Тариф указан за одну страницу."
-            : "Сравните адреса, часы работы и публичные тарифы. Для оформления заказа загрузите PDF."}
-          </p>
+        {canSelect ? (
+          <div className="work-toolbar">
+            <Link className={styles.backLink} href={routes.upload}>Назад к загрузке</Link>
+            <p className="work-step">Шаг 2 из 4</p>
+          </div>
+        ) : null}
+        <div className={styles.intro}>
+          <div className={styles.heading}>
+            <h1>{canSelect ? "Выберите точку печати" : "Точки печати"}</h1>
+            <p>{canSelect
+              ? "Показываем доступные точки в городе из вашего профиля. Тариф указан за одну страницу."
+              : "Сравните адреса, часы работы и публичные тарифы. Для оформления заказа загрузите PDF."}
+            </p>
+          </div>
+          <PixelSprite kind="kiosk" className={styles.scene} />
         </div>
-        <PointSelector selectable={canSelect} />
+        <PointSelector
+          selectable={canSelect}
+          continueHref={canSelect && typeof params.documentId === "string"
+            ? routes.configure(params.documentId)
+            : undefined}
+        />
         {!canSelect ? (
           <div className={styles.catalogAction}>
             <p>Файл понадобится только после входа — каталог и цены доступны без регистрации.</p>

@@ -1,15 +1,15 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { getCurrentUser } from "@/shared/auth/server";
 import { routes } from "@/shared/routes";
 import { UploadPageClient } from "./upload-page-client";
+import { PixelSprite } from "../pixel-sprite";
 import styles from "./upload.module.css";
 
 export default function UploadPage() {
   return (
-    <Suspense fallback={<main className={styles.page} aria-busy="true" />}>
+    <Suspense fallback={<main id="main-content" tabIndex={-1} className={styles.page} aria-busy="true" />}>
       <ProtectedUploadPage />
     </Suspense>
   );
@@ -22,20 +22,17 @@ async function ProtectedUploadPage() {
   if (user.role !== "CLIENT") redirect(routes.provider);
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <Link className={styles.logo} href="/" aria-label="CopyHouse, главная">
-          COPYHOUSE
-        </Link>
-        <span className={styles.orderLabel}>Новый заказ · шаг 1 из 4</span>
-      </header>
-
+    <main id="main-content" tabIndex={-1} className={styles.page}>
       <div className={styles.shell}>
+        <p className="work-step">Шаг 1 из 4</p>
         <div className={styles.content}>
           <UploadPageClient />
           <aside className={styles.note}>
-            <strong>Ваши файлы защищены</strong>
-            <p>Они будут доступны только вам и выбранной точке печати.</p>
+            <div>
+              <strong>Ваш файл защищён</strong>
+              <p>Он будет доступен только вам и выбранной точке печати.</p>
+            </div>
+            <PixelSprite kind="paper" className={styles.noteArt} />
           </aside>
         </div>
       </div>

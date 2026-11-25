@@ -5,9 +5,9 @@ import { printPointFixtures } from "@/shared/api/contract-fixtures";
 import {
   listPrintPoints,
   PointSelector,
-  SELECTED_PRINT_POINT_KEY,
   type ListPrintPoints,
 } from "./point-selector";
+import { SELECTED_PRINT_POINT_KEY } from "@/shared/order-draft";
 
 const response = printPointFixtures.slice(0, 2);
 
@@ -91,6 +91,25 @@ describe("PointSelector", () => {
 
     expect(await screen.findByRole("radio", { name: /CopyHouse Тверская/ }))
       .toBeChecked();
+  });
+
+  it("opens print settings after a point is selected", async () => {
+    const user = userEvent.setup();
+    const listPrintPoints = vi.fn<ListPrintPoints>().mockResolvedValue(response);
+
+    render(
+      <PointSelector
+        listPrintPoints={listPrintPoints}
+        continueHref="/configure/document-id"
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "Настроить печать" }))
+      .not.toBeInTheDocument();
+    await user.click(await screen.findByRole("radio", { name: /CopyHouse Дорожная/ }));
+
+    expect(screen.getByRole("link", { name: "Настроить печать" }))
+      .toHaveAttribute("href", "/configure/document-id");
   });
 
   it("shows the approved empty catalogue text", async () => {

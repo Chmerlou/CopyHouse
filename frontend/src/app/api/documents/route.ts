@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/shared/auth/http";
 import { getCurrentUser, apiBaseUrl, dataSource, SESSION_COOKIE } from "@/shared/auth/server";
+import type { ApiSchema } from "@/shared/api/contract";
+import { mockOrderStore } from "@/app/api/orders/mock-store";
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 
@@ -24,13 +26,15 @@ export async function POST(request: NextRequest) {
 
   if (dataSource === "mock") {
     if (!file.size) return apiError("EMPTY_PDF", "В документе нет страниц");
-    return NextResponse.json({
+    const document = {
       id: randomUUID(),
       originalName: file.name,
       sizeBytes: file.size,
       pageCount: 12,
       createdAt: new Date().toISOString(),
-    }, { status: 201 });
+    } satisfies ApiSchema<"Document">;
+    mockOrderStore.documents.set(document.id, document);
+    return NextResponse.json(document, { status: 201 });
   }
 
   const token = request.cookies.get(SESSION_COOKIE)?.value;

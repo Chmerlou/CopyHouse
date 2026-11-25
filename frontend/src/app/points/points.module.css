@@ -1,45 +1,18 @@
 .page {
-  min-height: 100dvh;
+  min-height: calc(100dvh - var(--site-header-height));
   background: var(--color-canvas);
   color: var(--color-ink);
-  font-family: "neoris", "Inter", Arial, sans-serif;
-  padding: 0 24px 80px;
-}
-
-.header {
-  display: flex;
-  width: min(100%, 980px);
-  min-height: 80px;
-  align-items: center;
-  justify-content: space-between;
-  margin-inline: auto;
-  border-bottom: 1px solid var(--color-edge);
-}
-
-.logo {
-  color: var(--color-ink);
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  text-decoration: none;
-}
-
-.step {
-  color: var(--color-body);
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 48px 24px 80px;
 }
 
 .shell {
   width: min(100%, 900px);
-  margin: 64px auto 0;
+  margin: 0 auto;
 }
 
 .backLink {
   display: inline-flex;
-  margin-bottom: 24px;
+  text-decoration: underline;
   color: var(--color-body);
   font-size: 13px;
   text-underline-offset: 4px;
@@ -50,6 +23,20 @@
   outline-offset: 3px;
 }
 
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+  gap: 24px;
+  align-items: center;
+}
+
+.scene { width: min(100%, 192px); height: auto; justify-self: end; }
+
+@media (max-width: 620px) {
+  .intro { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .scene { width: clamp(64px, 19vw, 112px); }
+}
+
 .heading {
   max-width: 650px;
 }
@@ -58,13 +45,10 @@
   margin: 0 0 16px;
   color: var(--color-heading);
   font-size: 40px;
-  font-weight: 400;
-  line-height: 1.15;
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
   text-wrap: balance;
-}
-
-.heading h1 span {
-  color: var(--color-faint);
 }
 
 .heading p {
@@ -108,9 +92,8 @@
   gap: 24px;
   min-height: 128px;
   border: 1px solid var(--color-edge);
-  border-radius: 12px;
+  border-radius: 0;
   background: var(--color-raised);
-  box-shadow: inset 0 1px 0 #fff;
   cursor: pointer;
   padding: 20px;
   transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out), transform 160ms var(--ease-out);
@@ -130,8 +113,9 @@
 }
 
 .selected {
-  border-color: rgb(26 111 209 / 48%);
-  background: #f3f7fc;
+  border-color: var(--ink);
+  box-shadow: var(--pixel-shadow);
+  background: #eff5da;
 }
 
 .readOnly {
@@ -209,9 +193,9 @@
 }
 
 .selected .choice {
-  border-color: #4b8ccf;
-  background: #1a6fd1;
-  color: #fff;
+  border-color: var(--ink);
+  background: var(--accent);
+  color: var(--ink);
 }
 
 .selectionStatus {
@@ -219,6 +203,35 @@
   color: var(--color-body);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.continueAction {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+  border-top: 1px solid var(--color-edge);
+  padding-top: 20px;
+}
+
+.continueAction a {
+  display: inline-grid;
+  min-height: 44px;
+  place-items: center;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--accent);
+  box-shadow: var(--pixel-shadow);
+  color: var(--ink);
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: box-shadow 140ms var(--ease-out), transform 140ms var(--ease-out);
+}
+
+.continueAction a:focus-visible {
+  outline: 2px solid var(--color-sky);
+  outline-offset: 3px;
 }
 
 .catalogAction {
@@ -241,14 +254,14 @@
 
 .catalogAction a {
   display: inline-grid;
-  min-height: 41px;
+  min-height: 44px;
   flex: none;
   place-items: center;
-  border: 1px solid #383838;
-  border-radius: 8px;
-  background: linear-gradient(rgb(32 32 32 / 10%), rgb(32 32 32 / 10%)), linear-gradient(#4f4f4f, rgb(32 32 32 / 85%));
-  box-shadow: inset 0 2px 0 rgb(255 255 255 / 24%), 0 3px 4px rgb(0 0 0 / 16%);
-  color: rgb(255 255 255 / 92%);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  background: var(--accent);
+  box-shadow: var(--pixel-shadow);
+  color: var(--ink);
   padding: 0 14px;
   font-size: 13px;
   font-weight: 600;
@@ -300,8 +313,7 @@
   font: inherit;
 }
 
-.state button:focus-visible,
-.logo:focus-visible {
+.state button:focus-visible {
   outline: 2px solid var(--color-sky);
   outline-offset: 3px;
 }
@@ -319,6 +331,9 @@
   .state button:hover {
     background: #edede9;
   }
+
+  .continueAction a:hover,
+  .catalogAction a:hover { background: var(--accent-hover); }
 }
 
 @media (max-width: 760px) {
@@ -335,26 +350,11 @@
 
 @media (max-width: 520px) {
   .page {
-    padding: 0 16px 48px;
-  }
-
-  .header {
-    min-height: 72px;
-  }
-
-  .logo {
-    font-size: 19px;
-  }
-
-  .step {
-    max-width: 150px;
-    font-size: 9px;
-    line-height: 1.4;
-    text-align: right;
+    padding: 28px 16px 48px;
   }
 
   .shell {
-    margin-top: 40px;
+    margin-top: 0;
   }
 
   .heading h1 {
@@ -392,10 +392,16 @@
   }
 
   .catalogAction a { width: 100%; }
+
+  .continueAction a { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .point {
+    transition: none;
+  }
+
+  .continueAction a {
     transition: none;
   }
 

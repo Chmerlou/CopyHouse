@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { UploadForm, type UploadDocument } from "./upload-form";
@@ -6,10 +6,6 @@ import { UploadForm, type UploadDocument } from "./upload-form";
 const lecturePdf = new File(["pdf"], "lecture.pdf", {
   type: "application/pdf",
 });
-const slidesPdf = new File(["pdf"], "slides.pdf", {
-  type: "application/pdf",
-});
-
 function uploadedDocument(file: File) {
   return {
     id: `document-${file.name}`,
@@ -27,12 +23,12 @@ describe("UploadForm", () => {
 
     render(<UploadForm uploadDocument={uploadDocument} />);
     await user.upload(
-      screen.getByLabelText("Выбрать файлы"),
+      screen.getByLabelText("Выбрать файл"),
       new File(["text"], "notes.txt", { type: "text/plain" }),
     );
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Выберите файлы в формате PDF",
+      "Выберите файл в формате PDF",
     );
     expect(uploadDocument).not.toHaveBeenCalled();
   });
@@ -46,45 +42,46 @@ describe("UploadForm", () => {
     Object.defineProperty(oversizedPdf, "size", { value: 50 * 1024 * 1024 + 1 });
 
     render(<UploadForm uploadDocument={uploadDocument} />);
-    await user.upload(screen.getByLabelText("Выбрать файлы"), oversizedPdf);
+    await user.upload(screen.getByLabelText("Выбрать файл"), oversizedPdf);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Размер каждого PDF не должен превышать 50 МБ",
+      "Размер PDF не должен превышать 50 МБ",
     );
     expect(uploadDocument).not.toHaveBeenCalled();
   });
 
-  it("replaces the empty dropzone with a multi-file queue", async () => {
+  it("accepts only one PDF per order", async () => {
     const user = userEvent.setup();
 
     render(<UploadForm />);
-    await user.upload(
-      screen.getByLabelText("Выбрать файлы"),
-      [lecturePdf, slidesPdf],
-    );
+    const input = screen.getByLabelText("Выбрать файл");
+    expect(input).not.toHaveAttribute("multiple");
+    fireEvent.drop(screen.getByTestId("pdf-dropzone"), {
+      dataTransfer: { files: [lecturePdf, new File(["pdf"], "slides.pdf", { type: "application/pdf" })] },
+    });
 
-    expect(screen.queryByText("Перетащите файлы сюда")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Для одного заказа можно загрузить только один PDF",
+    );
+    await user.upload(input, lecturePdf);
     expect(screen.getByText("lecture.pdf")).toBeInTheDocument();
+    expect(screen.getByLabelText("Заменить файл")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Загрузить файл" })).toBeEnabled();
+  });
+
+  it("replaces the selected file before upload", async () => {
+    const user = userEvent.setup();
+    const replacement = new File(["pdf"], "slides.pdf", { type: "application/pdf" });
+
+    render(<UploadForm />);
+    await user.upload(screen.getByLabelText("Выбрать файл"), lecturePdf);
+    await user.upload(screen.getByLabelText("Заменить файл"), replacement);
+
+    expect(screen.queryByText("lecture.pdf")).not.toBeInTheDocument();
     expect(screen.getByText("slides.pdf")).toBeInTheDocument();
-    expect(screen.getByLabelText("Добавить файлы")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Загрузить файлы" })).toBeEnabled();
   });
 
-  it("removes a selected file without clearing the rest of the queue", async () => {
-    const user = userEvent.setup();
-
-    render(<UploadForm />);
-    await user.upload(
-      screen.getByLabelText("Выбрать файлы"),
-      [lecturePdf, slidesPdf],
-    );
-    await user.click(screen.getByRole("button", { name: "Удалить slides.pdf" }));
-
-    expect(screen.getByText("lecture.pdf")).toBeInTheDocument();
-    expect(screen.queryByText("slides.pdf")).not.toBeInTheDocument();
-  });
-
-  it("uploads every selected file only after confirmation", async () => {
+  it("uploads the selected file only after confirmation", async () => {
     const user = userEvent.setup();
     const onComplete = vi.fn();
     const uploadDocument = vi.fn<UploadDocument>(async (file, onProgress) => {
@@ -94,67 +91,43 @@ describe("UploadForm", () => {
 
     render(<UploadForm uploadDocument={uploadDocument} onComplete={onComplete} />);
     await user.upload(
-      screen.getByLabelText("Выбрать файлы"),
-      [lecturePdf, slidesPdf],
+      screen.getByLabelText("Выбрать файл"),
+      lecturePdf,
     );
 
     expect(uploadDocument).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Загрузить файлы" }));
+    await user.click(screen.getByRole("button", { name: "Загрузить файл" }));
 
-    expect(await screen.findByText("2 файла загружены")).toBeInTheDocument();
-    expect(screen.getByText("24 страницы")).toBeInTheDocument();
-    expect(uploadDocument).toHaveBeenCalledTimes(2);
+    expect(await screen.findByText("Документ загружен")).toBeInTheDocument();
+    expect(screen.getByText("12 страниц")).toBeInTheDocument();
+    expect(uploadDocument).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith([
       expect.objectContaining({ id: "document-lecture.pdf" }),
-      expect.objectContaining({ id: "document-slides.pdf" }),
     ]);
     expect(screen.getByRole("link", { name: "Выбрать точку" }))
       .toHaveAttribute("href", "/points?documentId=document-lecture.pdf");
   });
 
-  it("retries only files that did not upload", async () => {
+  it("retries a failed upload", async () => {
     const user = userEvent.setup();
     const uploadDocument = vi
       .fn<UploadDocument>()
-      .mockImplementationOnce(async (file) => uploadedDocument(file))
       .mockRejectedValueOnce(new Error("network"))
       .mockImplementationOnce(async (file) => uploadedDocument(file));
 
     render(<UploadForm uploadDocument={uploadDocument} />);
     await user.upload(
-      screen.getByLabelText("Выбрать файлы"),
-      [lecturePdf, slidesPdf],
+      screen.getByLabelText("Выбрать файл"),
+      lecturePdf,
     );
-    await user.click(screen.getByRole("button", { name: "Загрузить файлы" }));
+    await user.click(screen.getByRole("button", { name: "Загрузить файл" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Не удалось загрузить все файлы",
+      "Нет соединения. Проверьте интернет и повторите попытку",
     );
     await user.click(screen.getByRole("button", { name: "Повторить загрузку" }));
 
-    expect(await screen.findByText("2 файла загружены")).toBeInTheDocument();
-    expect(uploadDocument).toHaveBeenCalledTimes(3);
-  });
-
-  it("finishes successfully when the failed file is removed", async () => {
-    const user = userEvent.setup();
-    const uploadDocument = vi
-      .fn<UploadDocument>()
-      .mockImplementationOnce(async (file) => uploadedDocument(file))
-      .mockRejectedValueOnce(new Error("network"));
-
-    render(<UploadForm uploadDocument={uploadDocument} />);
-    await user.upload(
-      screen.getByLabelText("Выбрать файлы"),
-      [lecturePdf, slidesPdf],
-    );
-    await user.click(screen.getByRole("button", { name: "Загрузить файлы" }));
-    await screen.findByRole("alert");
-    await user.click(screen.getByRole("button", { name: "Удалить slides.pdf" }));
-
-    expect(screen.getByText("1 файл загружен")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Удалить lecture.pdf" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByText("Документ загружен")).toBeInTheDocument();
+    expect(uploadDocument).toHaveBeenCalledTimes(2);
   });
 });

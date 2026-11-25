@@ -2,15 +2,11 @@
 
 import type { UploadedDocument } from "./upload-form";
 import { UploadForm } from "./upload-form";
-
-export const PENDING_DOCUMENTS_KEY = "copyhouse.pendingDocumentIds";
+import { savePendingDocuments as storePendingDocuments } from "@/shared/order-draft";
 
 export function UploadPageClient() {
   function savePendingDocuments(documents: UploadedDocument[]) {
-    sessionStorage.setItem(
-      PENDING_DOCUMENTS_KEY,
-      JSON.stringify(documents.map((document) => document.id)),
-    );
+    storePendingDocuments(documents);
   }
 
   return <UploadForm onComplete={savePendingDocuments} />;

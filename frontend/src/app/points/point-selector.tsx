@@ -1,10 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { ApiSchema } from "@/shared/api/contract";
+import { SELECTED_PRINT_POINT_KEY } from "@/shared/order-draft";
 import styles from "./points.module.css";
-
-export const SELECTED_PRINT_POINT_KEY = "copyhouse.selectedPrintPointId";
 
 type PrintPoint = ApiSchema<"PrintPointPublic">;
 type PrintPointList = ApiSchema<"PrintPointPublicList">;
@@ -49,9 +49,11 @@ const money = new Intl.NumberFormat("ru-RU", {
 export function PointSelector({
   listPrintPoints: requestPoints = listPrintPoints,
   selectable = true,
+  continueHref,
 }: {
   listPrintPoints?: ListPrintPoints;
   selectable?: boolean;
+  continueHref?: string;
 }) {
   const [points, setPoints] = useState<PrintPoint[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -183,6 +185,11 @@ export function PointSelector({
           ? "Точка сохранена. Вы сможете изменить выбор до оформления заказа."
           : "Выберите точку, чтобы продолжить оформление заказа."}
       </p>
+      {selectedId && continueHref ? (
+        <div className={styles.continueAction}>
+          <Link href={continueHref}>Настроить печать</Link>
+        </div>
+      ) : null}
     </>
   );
 }
