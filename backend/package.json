@@ -13,7 +13,11 @@
     "prebuild": "prisma generate",
     "pretest": "prisma generate",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "jest": {
     "moduleFileExtensions": [

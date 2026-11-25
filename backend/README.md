@@ -19,7 +19,19 @@ docker compose up --build
 
 API: http://localhost:3000/api/health
 
-Ожидаемый ответ: `{"status":"ok"}`. Swagger с зафиксированным контрактом: http://localhost:3000/api/docs. При старте контейнер применяет миграции Prisma.
+Ожидаемый ответ: `{"status":"ok"}`. Swagger с зафиксированным контрактом: http://localhost:3000/api/docs. При старте контейнер применяет миграции Prisma и сид.
+
+## Учётки сида
+
+Пароль у всех: `StrongPass1`. Город: Калуга.
+
+| Email | Роль |
+|---|---|
+| `client@copyhouse.local` | `CLIENT` |
+| `provider@copyhouse.local` | `PrintProvider` |
+| `admin@copyhouse.local` | `ADMIN` |
+
+В Калуге пять точек уже со статусом `APPROVED` и `isActive: true`. Клиент после входа видит их в каталоге и может загрузить PDF, запросить `POST /api/quotes`, создать `POST /api/orders` и оплатить `POST /api/orders/{id}/pay`. Повторный сид не плодит записи: `npx prisma db seed` в `backend/`.
 
 Живые ручки:
 
@@ -57,6 +69,7 @@ docker compose up postgres -d
 copy .env.example .env
 npm ci
 npx prisma migrate dev
+npx prisma db seed
 npm run start:dev
 ```
 
