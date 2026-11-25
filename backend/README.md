@@ -21,7 +21,7 @@ API: http://localhost:3000/api/health
 
 Ожидаемый ответ: `{"status":"ok"}`. Swagger с зафиксированным контрактом: http://localhost:3000/api/docs. При старте контейнер применяет миграции Prisma.
 
-Живые ручки дня 2:
+Живые ручки:
 
 - `POST /api/auth/register` — создаёт `CLIENT` или `PrintProvider`, токен не выдаёт
 - `POST /api/auth/login` — возвращает JWT на 7 дней. В токене версия сессии
@@ -29,9 +29,17 @@ API: http://localhost:3000/api/health
 - `GET /api/auth/me` и `PATCH /api/auth/me` — профиль и город
 - `GET /api/print-points?city=Калуга` — каталог и цены без токена. С токеном город берётся из профиля
 - `POST /api/documents` — PDF до 50 МБ, в ответе число страниц
+- `POST /api/quotes` — расчёт на 15 минут: страницы × копии × ставка выбранного режима. Только `CLIENT`
+- `POST /api/orders` — заказ со снимком цены. Заголовок `Idempotency-Key` обязателен. Повтор того же ключа возвращает прежний заказ
+- `GET /api/orders` и `GET /api/orders/{id}` — история и один заказ клиента
+- `POST /api/orders/{id}/pay` — тестовая оплата `SUCCESS` или `FAILURE`
+- `POST /api/orders/{id}/cancel` — клиент отменяет только неоплаченный заказ
+- `GET /api/point/orders` и действия `start`, `ready`, `issue`, `cancel` — кабинет точки
+- `POST /api/print-points`, `GET /api/print-points/mine`, правка заявки и тарифов
+- `POST /api/admin/print-points/{id}/approve`, `reject` и выключение точки — только `ADMIN`
 - `GET /api/documents/{id}` и `GET /api/documents/{id}/file` — свои метаданные и скачивание
 
-Остальные пути из контракта видны в Swagger и заработают в следующие дни.
+Swagger на `/api/docs` показывает тот же контракт.
 
 PostgreSQL снаружи: `localhost:5432`, база `copyhouse`, пользователь `copyhouse`, пароль `copyhouse`.
 

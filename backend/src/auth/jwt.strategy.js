@@ -4,6 +4,7 @@ const { ExtractJwt, Strategy } = require('passport-jwt');
 const { ConfigService } = require('@nestjs/config');
 const { PrismaService } = require('../prisma/prisma.service');
 const { apiError } = require('../common/api-error');
+const { toUser } = require('../common/user-input');
 
 @Injectable()
 class JwtStrategy extends PassportStrategy(Strategy) {
@@ -25,7 +26,7 @@ class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || !tokenVersionMatches(payload, user)) {
       throw apiError('UNAUTHORIZED');
     }
-    return user;
+    return toUser(user);
   }
 }
 

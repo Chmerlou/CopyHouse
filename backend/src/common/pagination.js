@@ -1,7 +1,9 @@
 const { apiError } = require('./api-error');
 
+const MAX_PAGE = 1000;
+
 function parsePage(value) {
-  return parseBoundedInt(value, 'page', 1, Number.MAX_SAFE_INTEGER, 1);
+  return parseBoundedInt(value, 'page', 1, MAX_PAGE, 1);
 }
 
 function parseLimit(value) {
@@ -58,4 +60,4 @@ function invalidNumber(field) {
   });
 }
 
-module.exports = { parsePage, parseLimit, parseSearch, pageResult };
+module.exports = { MAX_PAGE, parsePage, parseLimit, parseSearch, pageResult };
