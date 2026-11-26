@@ -32,7 +32,7 @@ async function ProtectedCheckout({ params }: { params: Promise<{ documentId: str
         </div>
         <div className={styles.layout}>
           <CheckoutForm documentId={documentId} />
-          <PixelSprite kind="paper" className={styles.scene} />
+          <PixelSprite kind="paper" className={`${styles.scene} ${styles.checkoutScene}`} />
         </div>
       </div>
     </main>

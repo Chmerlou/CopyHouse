@@ -40,7 +40,8 @@ describe("OrderView", () => {
   it("keeps the current status after a failed refresh, then shows the pickup code when ready", async () => {
     const user = userEvent.setup();
     const printing = orderFixtures[2];
-    const ready = { ...printing, status: "READY" as const, pickupCode: "048231" };
+    const ready = { ...printing, printPoint: { ...printing.printPoint, workingHours: "Ежедневно 09:00–21:00" },
+      status: "READY" as const, pickupCode: "048231" };
     const loadOrder = vi.fn<LoadOrder>()
       .mockResolvedValueOnce(printing)
       .mockRejectedValueOnce(new Error("network"))
@@ -55,7 +56,10 @@ describe("OrderView", () => {
     expect(screen.getByRole("heading", { name: "Заказ печатают" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Обновить статус" }));
     expect(await screen.findByRole("heading", { name: "Заказ готов к выдаче" })).toBeVisible();
-    expect(screen.getByText("048231")).toBeVisible();
+    const pickup = screen.getByRole("region", { name: "Получение заказа" });
+    expect(pickup).toHaveTextContent("048231");
+    expect(pickup).toHaveTextContent(ready.printPoint.address);
+    expect(pickup).toHaveTextContent(ready.printPoint.workingHours);
   });
 
   it("does not show payment controls or pickup codes for finished orders", async () => {

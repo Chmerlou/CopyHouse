@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/shared/auth/server";
 import { routes } from "@/shared/routes";
+import { NavigationBar, SiteNavigation } from "./site-navigation";
 import styles from "./site-header.module.css";
 
 function LoginLink() {
@@ -29,19 +30,16 @@ async function SignedInLinks() {
 }
 
 export function SiteHeader() {
+  const publicLinks = <><Link className={styles.guide} href="/#how-it-works">Как работает</Link><Link href={routes.points}>Точки печати</Link></>;
   return (
     <header className={styles.header}>
       <a className={styles.skip} href="#main-content">Перейти к содержимому</a>
-      <div className={styles.inner}>
-        <Link className={styles.logo} href={routes.home} aria-label="CopyHouse, главная">
-          COPYHOUSE
-        </Link>
-        <nav className={styles.nav} aria-label="Основная навигация">
-          <Link className={styles.guide} href="/#how-it-works">Как работает</Link>
-          <Link href={routes.points}>Точки печати</Link>
+      <Suspense fallback={<NavigationBar>{publicLinks}<LoginLink /></NavigationBar>}>
+        <SiteNavigation>
+          {publicLinks}
           <Suspense fallback={<LoginLink />}><SignedInLinks /></Suspense>
-        </nav>
-      </div>
+        </SiteNavigation>
+      </Suspense>
     </header>
   );
 }

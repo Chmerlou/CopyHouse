@@ -69,6 +69,13 @@
 .secondary { background: var(--paper); }
 .error { margin: 16px 0 0; color: var(--color-danger); font-size: 14px; }
 .paymentNote { margin-top: 14px; color: var(--color-body); font-size: 13px; line-height: 1.5; }
+.checkoutCard h1 { margin-bottom: 18px; }
+.checkoutBar { margin-top: 18px; background: var(--color-raised); }
+.checkoutBar .paymentNote { margin: 5px 0 0; }
+.checkoutBar button, .checkoutBar a { margin-top: 12px; }
+.checkoutTotal { margin: 0; }
+.checkoutTotal > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.checkoutTotal dd { margin: 0; }
 .status { width: fit-content; margin: 0 0 22px; border: 1px solid var(--ink); background: #fff1c8; padding: 5px 9px; font-size: 13px; font-weight: 800; }
 .status[data-status="PAID"], .status[data-status="PRINTING"] { background: #dfeefc; }
 .status[data-status="READY"] { background: var(--accent); }
@@ -96,16 +103,18 @@
 
 .pickup {
   display: grid;
-  justify-items: center;
-  gap: 4px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-top: 18px;
   border: 2px solid var(--ink);
   background: #eff5da;
   padding: 14px 12px;
   font-size: 14px;
 }
 
-.pickup strong { font-size: clamp(30px, 7vw, 44px); font-variant-numeric: tabular-nums; letter-spacing: .12em; }
+.pickupCode, .pickupPlace { display: grid; gap: 4px; }
+.pickupCode strong { font-size: clamp(30px, 9vw, 44px); line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: .12em; }
+.pickupCode + .pickupPlace { padding-top: 12px; border-top: 1px solid var(--color-edge); }
+.pickupPlace span:last-child { color: var(--color-body); }
 .orderActions { display: flex; justify-content: space-between; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin-top: 16px; }
 .orderActions a, .refresh { display: inline-flex; align-items: center; min-height: 44px; }
 .refresh { color: var(--sky-deep); font-size: 14px; font-weight: 700; cursor: pointer; }
@@ -136,6 +145,15 @@
   .page { padding: 28px 16px 48px; }
   .layout { grid-template-columns: 1fr; }
   .scene { width: min(100%, 144px); }
+  .scene.checkoutScene { display: none; }
+  .checkoutBar {
+    position: sticky;
+    bottom: 0;
+    margin-inline: -12px;
+    margin-bottom: -12px;
+    padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--color-edge);
+  }
 }
 
 @media (max-width: 420px) {

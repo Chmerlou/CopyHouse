@@ -5,10 +5,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { ApiSchema } from "@/shared/api/contract";
 import { getCurrentUser, dataSource } from "@/shared/auth/server";
-import { routes } from "@/shared/routes";
 import { pointActionAccess, pointActionError, pointRequest, readPointId } from "../point-management/backend";
 import { readPrice } from "../point-management/price";
 import { providerPointCookie } from "./provider-data";
+import { providerHref, type OrderQueueView } from "./provider-links";
 
 export type PriceState = {
   message?: string;
@@ -49,7 +49,7 @@ export async function savePointPrices(_previous: PriceState, form: FormData): Pr
     : "Тарифы сохранены." };
 }
 
-export async function selectProviderPoint(form: FormData) {
+export async function selectProviderPoint(view: OrderQueueView, form: FormData) {
   const user = await getCurrentUser();
   const id = readPointId(form.get("pointId"));
   if (!user || user.role !== "PrintProvider" || dataSource !== "live" || !id) return;
@@ -61,7 +61,7 @@ export async function selectProviderPoint(form: FormData) {
     path: "/provider",
     maxAge: 60 * 60 * 24 * 365,
   });
-  redirect(routes.provider);
+  redirect(providerHref(view === "completed" ? "completed" : "active"));
 }
 
 export type OrderActionState = { message?: string; error?: string; fieldError?: string } | null;

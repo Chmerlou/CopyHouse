@@ -23,18 +23,20 @@ describe("CheckoutForm", () => {
   it("shows the one-file summary and creates an order with a stable idempotency key", async () => {
     const user = userEvent.setup();
     const createOrder = vi.fn<CreateOrder>().mockRejectedValueOnce(new Error("network")).mockResolvedValueOnce({ id: "order-one" });
-    render(<CheckoutForm documentId="document-one" createOrder={createOrder} />);
+    const payOrder = vi.fn().mockResolvedValue(undefined);
+    render(<CheckoutForm documentId="document-one" createOrder={createOrder} payOrder={payOrder} />);
 
     expect(screen.getByText("lecture.pdf")).toBeInTheDocument();
     expect(screen.getByText("CopyHouse Дорожная")).toBeInTheDocument();
     expect(screen.getByText(/120,00\s*₽/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Оформить заказ" }));
+    await user.click(screen.getByRole("button", { name: "Подтвердить и оплатить" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Не удалось оформить заказ");
     await user.click(screen.getByRole("button", { name: "Повторить" }));
 
     expect(createOrder).toHaveBeenCalledTimes(2);
     expect(createOrder.mock.calls[0][0]).toEqual(createOrder.mock.calls[1][0]);
     expect(createOrder.mock.calls[0][1]).toBe(createOrder.mock.calls[1][1]);
+    expect(payOrder).toHaveBeenCalledExactlyOnceWith("order-one", "SUCCESS");
     expect(push).toHaveBeenCalledWith("/orders/order-one");
   });
 
@@ -43,9 +45,29 @@ describe("CheckoutForm", () => {
     const createOrder = vi.fn<CreateOrder>().mockRejectedValue(new Error("PRICE_CHANGED"));
     render(<CheckoutForm documentId="document-one" createOrder={createOrder} />);
 
-    await user.click(screen.getByRole("button", { name: "Оформить заказ" }));
+    await user.click(screen.getByRole("button", { name: "Подтвердить и оплатить" }));
     expect(await screen.findByRole("link", { name: "Пересчитать цены" }))
       .toHaveAttribute("href", "/points?documentId=document-one");
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("opens the same order for retry if payment cannot be confirmed", async () => {
+    const createOrder = vi.fn<CreateOrder>().mockResolvedValue({ id: "order-one" });
+    const payOrder = vi.fn().mockRejectedValue(new Error("offline"));
+    const checkout = render(<CheckoutForm documentId="document-one" createOrder={createOrder} payOrder={payOrder} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Подтвердить и оплатить" }));
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith("/orders/order-one?payment=retry");
+
+    checkout.unmount();
+    payOrder.mockResolvedValue(undefined);
+    render(<CheckoutForm documentId="document-one" createOrder={createOrder} payOrder={payOrder} />);
+    await userEvent.click(screen.getByRole("button", { name: "Подтвердить и оплатить" }));
+
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(payOrder).toHaveBeenLastCalledWith("order-one", "SUCCESS");
+    expect(push).toHaveBeenLastCalledWith("/orders/order-one");
   });
 });

@@ -5,11 +5,12 @@ import { useEffect, useState } from "react";
 import type { ApiSchema } from "@/shared/api/contract";
 import { orderStatusLabel } from "@/shared/order-status";
 import { routes } from "@/shared/routes";
+import { requestPayment, type PayOrder } from "../payment-client";
 import styles from "../../order-flow.module.css";
 
 type Order = ApiSchema<"OrderClient">;
 export type LoadOrder = (orderId: string) => Promise<Order>;
-export type PayOrder = (orderId: string, outcome: "SUCCESS" | "FAILURE") => Promise<Order>;
+export type { PayOrder } from "../payment-client";
 const money = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", minimumFractionDigits: 2 });
 const progress = ["PAID", "PRINTING", "READY", "ISSUED"] as const;
 const titles: Record<Order["status"], string> = {
@@ -36,18 +37,17 @@ async function requestOrder(orderId: string): Promise<Order> {
   if (!response.ok) throw new Error("load_order_failed");
   return response.json() as Promise<Order>;
 }
-async function requestPayment(orderId: string, outcome: "SUCCESS" | "FAILURE"): Promise<Order> {
-  const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/pay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ outcome }) });
-  if (!response.ok) throw new Error("pay_order_failed");
-  return response.json() as Promise<Order>;
-}
-
-export function OrderView({ orderId, loadOrder = requestOrder, payOrder = requestPayment }: { orderId: string; loadOrder?: LoadOrder; payOrder?: PayOrder }) {
+export function OrderView({ orderId, loadOrder = requestOrder, payOrder = requestPayment, paymentRetry = false }: {
+  orderId: string;
+  loadOrder?: LoadOrder;
+  payOrder?: PayOrder;
+  paymentRetry?: boolean;
+}) {
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [payError, setPayError] = useState(false);
+  const [payError, setPayError] = useState(paymentRetry);
   const [refreshing, setRefreshing] = useState(false);
   const [revision, setRevision] = useState(0);
   const status = order?.status;
@@ -113,17 +113,28 @@ export function OrderView({ orderId, loadOrder = requestOrder, payOrder = reques
     </section>
   );
   const needsPayment = order.status === "CREATED";
+  const readyForPickup = order.status === "READY";
   const failed = needsPayment && order.payment?.status === "FAILED";
   const knownStatus = Object.hasOwn(titles, order.status);
   const stepIndex = progress.findIndex((step) => step === order.status);
   const description = failed ? "Повторите оплату, чтобы передать заказ в печать."
-    : order.status === "READY" && !order.pickupCode ? "Код выдачи пока недоступен. Обновите статус, чтобы проверить его снова."
+    : readyForPickup && !order.pickupCode ? "Код выдачи пока недоступен. Обновите статус, чтобы проверить его снова."
       : order.status === "CANCELLED" && order.payment?.status === "REFUNDED" ? "Тестовая оплата отменена. Деньги не списывались."
         : knownStatus ? nextStep[order.status] : "Обновите страницу позже, чтобы проверить заказ.";
   return (
     <section className={styles.card} aria-labelledby="order-title">
       <div aria-live="polite">
         <h1 id="order-title">{failed ? "Оплата не прошла" : knownStatus ? titles[order.status] : "Статус уточняется"}</h1>
+        {readyForPickup && (
+          <section className={styles.pickup} aria-label="Получение заказа">
+            {order.pickupCode && <div className={styles.pickupCode}><span>Код выдачи</span><strong>{order.pickupCode}</strong></div>}
+            <div className={styles.pickupPlace}>
+              <strong>{order.printPoint.name}</strong>
+              <span>{order.printPoint.city}, {order.printPoint.address}</span>
+              {order.printPoint.workingHours && <span>Часы работы: {order.printPoint.workingHours}</span>}
+            </div>
+          </section>
+        )}
         <p className={styles.lead}>{description}</p>
         {stepIndex >= 0 ? (
           <ol className={styles.progress} aria-label="Этапы заказа">
@@ -134,21 +145,20 @@ export function OrderView({ orderId, loadOrder = requestOrder, payOrder = reques
             ))}
           </ol>
         ) : <p className={styles.status} data-status={order.status}>{orderStatusLabel(order.status)}</p>}
-        {order.status === "READY" && order.pickupCode ? (
-          <div className={styles.pickup}><span>Код выдачи</span><strong>{order.pickupCode}</strong></div>
-        ) : null}
       </div>
       <dl className={styles.summary}>
-        <div><dt>Точка печати</dt><dd><strong>{order.printPoint.name}</strong><span>{order.printPoint.city}, {order.printPoint.address}</span></dd></div>
+        {!readyForPickup && <div><dt>Точка печати</dt><dd><strong>{order.printPoint.name}</strong><span>{order.printPoint.city}, {order.printPoint.address}</span></dd></div>}
         <div><dt>Файл</dt><dd>{order.document.originalName}</dd></div>
         <div><dt>Печать</dt><dd>{order.colorMode === "BW" ? "Чёрно-белая" : "Цветная"}, {order.copies} экз.</dd></div>
         <div className={styles.total}><dt>Итого</dt><dd>{money.format(order.total / 100)}</dd></div>
       </dl>
       {needsPayment ? <p className={styles.paymentNote}>Тестовая оплата. Деньги не спишутся.</p>
         : order.status === "PAID" ? <p className={styles.paymentNote}>Тестовая оплата прошла без списания денег.</p> : null}
-      {payError ? <p className={styles.error} role="alert">Не удалось провести оплату. Повторите попытку.</p> : null}
+      {needsPayment && payError ? <p className={styles.error} role="alert">Не удалось подтвердить оплату. Заказ сохранён, оплату можно повторить.</p> : null}
       {loadError ? <p className={styles.error} role="alert">Не удалось обновить статус. Показаны последние данные.</p> : null}
-      {needsPayment ? <button className={styles.primary} type="button" disabled={paying} onClick={pay}>{paying ? "Подтверждаем оплату…" : "Оплатить заказ"}</button> : null}
+      {needsPayment ? <button className={styles.primary} type="button" disabled={paying} onClick={pay}>
+        {paying ? "Подтверждаем оплату…" : payError ? "Повторить оплату" : "Оплатить заказ"}
+      </button> : null}
       <div className={styles.orderActions}>
         <Link className={styles.back} href={routes.accountOrders}>Мои заказы</Link>
         {canRefresh ? (

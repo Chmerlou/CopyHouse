@@ -144,3 +144,12 @@
 @media (max-width: 420px) {
   .roleGroup { grid-template-columns: 1fr; }
 }
+.catalogLink {
+  margin: 16px 0 0;
+  border-top: 1px solid var(--color-edge);
+  padding-top: 4px;
+  text-align: center;
+  color: var(--sky-deep);
+  font-size: 14px;
+}
+.catalogLink a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; }

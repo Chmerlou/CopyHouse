@@ -55,6 +55,7 @@ function PointChoice({ point, selected }: { point: Point; selected: boolean }) {
   const [fits, setFits] = useState(true);
   const address = Array.from(point.address);
   const shortAddress = address.length > 12 ? `${address.slice(0, 9).join("")}...` : point.address;
+  const shownAddress = address.length <= 18 && fits ? point.address : shortAddress;
 
   useLayoutEffect(() => {
     const visible = label.current;
@@ -72,11 +73,11 @@ function PointChoice({ point, selected }: { point: Point; selected: boolean }) {
   return (
     <button
       type="submit" name="pointId" value={point.id} className={styles.pointChoice}
-      aria-label={point.address} aria-pressed={selected} title={point.address} disabled={pending}
+      aria-label={point.address} aria-pressed={selected} title={shownAddress === point.address ? undefined : point.address} disabled={pending}
     >
-      <span ref={label} className={styles.pointLabel} aria-hidden="true">{address.length <= 18 && fits ? point.address : shortAddress}</span>
+      <span ref={label} className={styles.pointLabel} aria-hidden="true">{shownAddress}</span>
       <span ref={full} className={styles.measurement} aria-hidden="true">{point.address}</span>
-      <span className={styles.pointTooltip} aria-hidden="true">{point.address}</span>
+      {shownAddress !== point.address && <span className={styles.pointTooltip} aria-hidden="true">{point.address}</span>}
     </button>
   );
 }

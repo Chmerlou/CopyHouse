@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
     const order = {
       id: randomUUID(), status: "CREATED", createdAt: now, updatedAt: now,
-      printPoint: { id: offer.printPointId, name: offer.name, city: offer.city, address: offer.address },
+      printPoint: { id: offer.printPointId, name: offer.name, city: offer.city, address: offer.address, workingHours: offer.workingHours },
       document: { id: document.id, originalName: document.originalName, pageCount: quote.pageCount },
       colorMode: quote.colorMode, copies: quote.copies, pageCount: quote.pageCount,
       unitPrice: offer.pricePerPage, subtotal: offer.total, commissionBps: 0,

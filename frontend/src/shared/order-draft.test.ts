@@ -32,6 +32,14 @@ describe("order draft storage", () => {
     expect(readPendingDocuments()).toEqual([documents[0]]);
   });
 
+  it("restores a Cyrillic filename cached by an older upload", () => {
+    const originalName = "Документы для печати.pdf";
+    const damagedName = Array.from(new TextEncoder().encode(originalName), (byte) => String.fromCharCode(byte)).join("");
+    savePendingDocuments([{ ...documents[0], originalName: damagedName }]);
+
+    expect(readPendingDocuments()[0].originalName).toBe(originalName);
+  });
+
   it("saves settings independently for each document", () => {
     savePrintSettings({
       documentId: "document-one",

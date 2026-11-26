@@ -908,6 +908,8 @@ export interface components {
                 name: string;
                 city: components["schemas"]["City"];
                 address: string;
+                /** @description Текущие часы работы точки печати. */
+                workingHours?: string;
             };
             document: {
                 id: components["schemas"]["Uuid"];
@@ -944,6 +946,8 @@ export interface components {
                 name: string;
                 city: components["schemas"]["City"];
                 address: string;
+                /** @description Текущие часы работы точки печати. */
+                workingHours?: string;
             };
             document: {
                 id: components["schemas"]["Uuid"];
@@ -1810,6 +1814,8 @@ export interface operations {
                 createdTo?: components["parameters"]["CreatedTo"];
                 sortBy?: components["parameters"]["SortBy"];
                 sortOrder?: components["parameters"]["SortOrder"];
+                /** @description Активные или завершённые заказы. Можно сочетать с фильтром status. */
+                queue?: "active" | "completed";
                 printPointId?: components["schemas"]["Uuid"];
             };
             header?: never;
@@ -1827,6 +1833,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrderPointList"];
                 };
             };
+            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             /** @description В фильтре передана чужая или несуществующая точка */

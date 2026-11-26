@@ -837,6 +837,12 @@ paths:
         - $ref: "#/components/parameters/CreatedTo"
         - $ref: "#/components/parameters/SortBy"
         - $ref: "#/components/parameters/SortOrder"
+        - name: queue
+          in: query
+          description: Активные или завершённые заказы. Можно сочетать с фильтром status.
+          schema:
+            type: string
+            enum: [active, completed]
         - name: printPointId
           in: query
           required: false
@@ -849,6 +855,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderPointList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2226,6 +2234,9 @@ components:
               $ref: "#/components/schemas/City"
             address:
               type: string
+            workingHours:
+              type: string
+              description: Текущие часы работы точки печати.
         document:
           type: object
           required: [id, originalName, pageCount]
@@ -2308,6 +2319,9 @@ components:
               $ref: "#/components/schemas/City"
             address:
               type: string
+            workingHours:
+              type: string
+              description: Текущие часы работы точки печати.
         document:
           type: object
           required: [id, originalName, pageCount]

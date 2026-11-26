@@ -80,6 +80,7 @@
 .table tbody tr { border-top: 1px solid var(--color-edge); }
 .table tbody tr[data-selected="true"] { background: #eff5da; }
 .table tbody th { font-weight: 750; }
+.mobileOrders { display: none; }
 
 .orderStatus {
   display: inline-block;
@@ -93,7 +94,7 @@
 .orderStatus[data-status="PRINTING"] { background: #fff1c8; }
 .orderStatus[data-status="CANCELLED"] { background: #fbe6e3; }
 
-.orderDetails { margin-top: 16px; }
+.orderDetails { margin-bottom: 16px; }
 .detailHeading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .orderFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; margin: 14px 0 4px; }
 .orderFacts dt { color: var(--color-body); font-size: 14px; }
@@ -107,21 +108,28 @@
 .cancelOrder { margin-top: 12px; }
 .cancelOrder summary { display: list-item; width: fit-content; padding: 12px 0; cursor: pointer; font-weight: 650; }
 .cancelOrder .operationForm { padding-top: 4px; }
-.ratesSection { margin-top: 36px; }
-
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .pointChoice { padding-inline: 8px; }
-  .table { min-width: 0; table-layout: fixed; font-size: 13px; }
-  .table thead { font-size: inherit; }
-  .table th, .table td { padding-inline: 5px; white-space: normal; overflow-wrap: anywhere; }
-  .table th:nth-child(1) { width: 22%; }
-  .table th:nth-child(2) { width: 20%; }
-  .table th:nth-child(3) { width: 21%; }
-  .table th:nth-child(4) { width: 16%; }
-  .table th:nth-child(5) { width: 21%; }
-  .table thead th:nth-child(4) { padding-inline: 3px; font-size: 12px; white-space: nowrap; }
-  .table time { font-size: 12px; }
-  .table .orderStatus { padding-inline: 4px; font-size: 12px; }
+  .tableScroll { display: none; }
+  .mobileOrders { display: block; margin: 0; padding: 0; border: 2px solid var(--ink); background: var(--color-raised); list-style: none; }
+  .mobileOrders li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; }
+  .mobileOrders li + li { border-top: 1px solid var(--color-edge); }
+  .mobileOrders li[data-selected="true"] { background: #eff5da; }
+  .mobileOrderInfo { display: grid; justify-items: start; gap: 5px; }
+  .openOrder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    flex: none;
+    padding: 0 12px;
+    border: 1px solid var(--ink);
+    background: var(--color-raised);
+    font-size: 14px;
+    font-weight: 750;
+    text-decoration: none;
+  }
+  .openOrder:hover { background: var(--color-panel); }
   .operationForm { display: grid; }
 }
 
@@ -129,3 +137,24 @@
   .pointChoice { transition: none; }
   .queue { animation: none; }
 }
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--color-edge);
+}
+
+.tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-bottom: 3px solid transparent;
+  color: var(--color-body);
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: none;
+}
+.tabs a[aria-current="page"] { border-color: var(--ink); background: var(--color-panel); color: var(--ink); }
+.tabs a:hover { background: var(--color-panel); }
