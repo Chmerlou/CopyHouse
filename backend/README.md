@@ -81,6 +81,29 @@ npm run lint
 npm test
 ```
 
+## Сценарий в Swagger
+
+Открыть http://localhost:3000/api/docs. Учётки сида, пароль `StrongPass1`.
+
+1. `POST /auth/login` как `client@copyhouse.local`. Скопировать `accessToken` в Authorize.
+2. `POST /documents` — PDF. Сохранить `id` и `pageCount`.
+3. `POST /quotes` с этим документом, `colorMode=BW`, `copies=1`. В `offers` пять точек Калуги.
+4. `POST /orders` с `quoteId`, `printPointId` выбранной точки и заголовком `Idempotency-Key` в виде UUID.
+5. `POST /orders/{orderId}/pay` с `{ "outcome": "SUCCESS" }`. Статус становится `PAID`.
+6. Выйти из Authorize и войти как `provider@copyhouse.local`.
+7. `POST /point/orders/{orderId}/start`, затем `POST /point/orders/{orderId}/ready`.
+8. Снова войти клиентом и открыть `GET /orders/{orderId}`. Там код из 6 цифр.
+9. Войти владельцем и вызвать `POST /point/orders/{orderId}/issue` с этим кодом. Статус `ISSUED`.
+10. `admin@copyhouse.local` нужен для `POST /admin/print-points/{id}/approve`. Пять точек сида уже одобрены, для заказа этот шаг не нужен.
+
+## Долги второго спринта
+
+- Боевой эквайринг вместо тестового `MOCK`.
+- Уведомления о смене статуса.
+- WebSocket вместо опроса `GET /orders/{id}`.
+- Загрузка не только PDF.
+- Карта, расстояние, отзывы и промокоды.
+
 ## Схема базы
 
 Источник полей — `openapi.yaml`. Деньги хранятся в копейках. PDF на диске появится вместе с загрузкой; в базе остаётся только ключ хранилища. Каталог `uploads` уже предусмотрен томом Docker.

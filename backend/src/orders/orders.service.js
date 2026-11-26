@@ -3,6 +3,7 @@ const { Injectable, Inject } = require('@nestjs/common');
 const { PrismaService } = require('../prisma/prisma.service');
 const { apiError } = require('../common/api-error');
 const { isUuid } = require('../common/ids');
+const { parseDate, parseSort } = require('../common/list-query');
 const { pageResult, parseLimit, parsePage } = require('../common/pagination');
 const { normalizeCity } = require('../common/user-input');
 const { calculatePrice, rateFor } = require('../pricing/price');
@@ -49,11 +50,7 @@ class OrdersService {
     const status = parseStatus(query && query.status);
     const createdFrom = parseDate(query && query.createdFrom, 'createdFrom');
     const createdTo = parseDate(query && query.createdTo, 'createdTo');
-    if (query && query.sortBy !== undefined && query.sortBy !== '' && query.sortBy !== 'createdAt') {
-      throw apiError('VALIDATION_ERROR', {
-        details: [{ field: 'sortBy', message: 'Сортировка доступна только по дате создания' }],
-      });
-    }
+    const sortOrder = parseSort(query);
 
     if (status) {
       where.status = status;
@@ -72,7 +69,7 @@ class OrdersService {
       this.prisma.order.findMany({
         where,
         include: orderInclude,
-        orderBy: { createdAt: parseSortOrder(query && query.sortOrder) },
+        orderBy: { createdAt: sortOrder },
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -339,30 +336,6 @@ function parseStatus(value) {
     });
   }
   return value;
-}
-
-function parseDate(value, field) {
-  if (value === undefined || value === null || value === '') {
-    return null;
-  }
-  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) {
-    throw apiError('VALIDATION_ERROR', {
-      details: [{ field, message: 'Укажите дату и время' }],
-    });
-  }
-  return new Date(value);
-}
-
-function parseSortOrder(value) {
-  if (value === undefined || value === null || value === '' || value === 'desc') {
-    return 'desc';
-  }
-  if (value === 'asc') {
-    return 'asc';
-  }
-  throw apiError('VALIDATION_ERROR', {
-    details: [{ field: 'sortOrder', message: 'Порядок сортировки: asc или desc' }],
-  });
 }
 
 function toOrderClient(order) {

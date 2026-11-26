@@ -3,6 +3,7 @@ const { Injectable, Inject } = require('@nestjs/common');
 const { PrismaService } = require('../prisma/prisma.service');
 const { apiError } = require('../common/api-error');
 const { isUuid } = require('../common/ids');
+const { parseDate, parseSort } = require('../common/list-query');
 const { pageResult, parseLimit, parsePage } = require('../common/pagination');
 const { toOrderPoint } = require('../orders/orders.service');
 
@@ -18,10 +19,18 @@ class PointOrdersService {
     const page = parsePage(query && query.page);
     const limit = parseLimit(query && query.limit);
     const status = parseVisibleStatus(query && query.status);
+    const createdFrom = parseDate(query && query.createdFrom, 'createdFrom');
+    const createdTo = parseDate(query && query.createdTo, 'createdTo');
+    const sortOrder = parseSort(query);
     const where = {
       printPoint: { ownerId: user.id },
       status: status || { in: VISIBLE },
     };
+    if (createdFrom || createdTo) {
+      where.createdAt = {};
+      if (createdFrom) where.createdAt.gte = createdFrom;
+      if (createdTo) where.createdAt.lte = createdTo;
+    }
     if (query && query.printPointId !== undefined && query.printPointId !== '') {
       where.printPointId = await this.ownPointId(user, query.printPointId);
     }
@@ -29,7 +38,7 @@ class PointOrdersService {
       this.prisma.order.findMany({
         where,
         include: pointInclude,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: sortOrder },
         skip: (page - 1) * limit,
         take: limit,
       }),
