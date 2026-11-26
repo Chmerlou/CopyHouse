@@ -14,9 +14,8 @@ function positiveInteger(value: string | null, fallback: number, maximum?: numbe
 }
 
 export async function GET(request: NextRequest) {
-  const user = await getCurrentUser();
-
   if (dataSource === "mock") {
+    const user = await getCurrentUser();
     const page = positiveInteger(request.nextUrl.searchParams.get("page"), 1);
     const limit = positiveInteger(request.nextUrl.searchParams.get("limit"), 20, 100);
     const rawQuery = request.nextUrl.searchParams.get("q");
@@ -25,7 +24,7 @@ export async function GET(request: NextRequest) {
       return apiError("VALIDATION_ERROR", "Проверьте заполненные поля", 400);
     }
     const query = trimmedQuery.toLocaleLowerCase("ru");
-    const city = user?.city.trim().toLocaleLowerCase("ru") ?? null;
+    const city = (user?.city ?? request.nextUrl.searchParams.get("city"))?.trim().toLocaleLowerCase("ru") || null;
     const available = printPointFixtures.filter((point) => {
       const matchesCity = city === null || point.city.trim().toLocaleLowerCase("ru") === city;
       const matchesQuery = !query || `${point.name} ${point.address}`.toLocaleLowerCase("ru").includes(query);
@@ -45,11 +44,13 @@ export async function GET(request: NextRequest) {
   }
 
   const token = request.cookies.get(SESSION_COOKIE)?.value;
+  const url = `${apiBaseUrl}/print-points${request.nextUrl.search}`;
   try {
-    const backend = await fetch(`${apiBaseUrl}/print-points${request.nextUrl.search}`, {
+    let backend = await fetch(url, {
       headers: token ? { authorization: `Bearer ${token}` } : undefined,
       cache: "no-store",
     });
+    if (token && backend.status === 401) backend = await fetch(url, { cache: "no-store" });
     return NextResponse.json(await backend.json(), { status: backend.status });
   } catch {
     return apiError("INTERNAL_ERROR", "Не удалось выполнить операцию", 500);

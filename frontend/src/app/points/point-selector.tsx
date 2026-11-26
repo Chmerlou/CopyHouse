@@ -36,7 +36,6 @@ async function requestPrintPointPage(page: number, city?: string): Promise<Print
   const query = new URLSearchParams({ page: String(page), limit: "100" });
   if (city) query.set("city", city);
   const response = await fetch(`/api/print-points?${query}`, { cache: "no-store" });
-  if (response.status === 401) throw new PointRequestError("Войдите в аккаунт снова, чтобы открыть каталог.", true);
   if (response.status === 400 && city) throw new PointRequestError("Проверьте название города.");
   if (!response.ok) throw new PointRequestError("Попробуйте загрузить список ещё раз.");
 
@@ -68,6 +67,7 @@ export function PointSelector({
   continueHref,
   continueLabel = "Начать заказ",
   city,
+  showCity = false,
   documentId,
   createQuote = requestQuote,
 }: {
@@ -76,6 +76,7 @@ export function PointSelector({
   continueHref?: string;
   continueLabel?: string;
   city?: string;
+  showCity?: boolean;
   documentId?: string;
   createQuote?: CreateQuote;
 }) {
@@ -203,12 +204,13 @@ export function PointSelector({
   if (!points.length) {
     return (
       <div className={styles.state} role="status">
-        <strong>{documentId ? "Нет предложений для этих параметров" : "В вашем городе пока нет точек печати"}</strong>
+        <strong>{documentId ? "Нет предложений для этих параметров"
+          : showCity ? "Пока нет точек печати" : "В вашем городе пока нет точек печати"}</strong>
         <p>{documentId ? "Попробуйте изменить цвет печати или число копий."
           : city ? "Проверьте название города или выберите другой." : "Попробуйте зайти позже."}</p>
         {documentId
           ? <Link href={routes.configure(documentId)}>Изменить параметры</Link>
-          : city ? <Link href={routes.points}>Изменить город</Link>
+          : city ? <Link href={routes.points}>Показать все города</Link>
             : <button type="button" onClick={reload}>Обновить список</button>}
       </div>
     );
@@ -218,11 +220,13 @@ export function PointSelector({
     <ul className={styles.pointList}>
       {points.map((point) => {
         const isSelected = point.id === selectedId;
+        const address = showCity && !point.address.toLocaleLowerCase("ru").startsWith(`${point.city.toLocaleLowerCase("ru")},`)
+          ? `${point.city}, ${point.address}` : point.address;
         const details = (
           <>
             <span className={styles.pointMain}>
               <strong>{point.name}</strong>
-              <span>{point.address}</span>
+              <span>{address}</span>
               <span className={styles.hours}>{point.workingHours}</span>
             </span>
             {"total" in point ? (

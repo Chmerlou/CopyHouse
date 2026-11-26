@@ -57,4 +57,17 @@ describe("GET /api/print-points in live mode", () => {
       { headers: { authorization: "Bearer session-token" }, cache: "no-store" },
     );
   });
+
+  it("retries the public request without an expired session cookie and keeps the city filter", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: "UNAUTHORIZED" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [], pagination: {} }), { status: 200 }));
+    const query = new URLSearchParams({ city: "Калуга" });
+    const request = new NextRequest(`http://localhost/api/print-points?${query}`, {
+      headers: { cookie: "copyhouse_session=expired-session" },
+    });
+
+    expect((await GET(request)).status).toBe(200);
+    expect(fetchMock).toHaveBeenLastCalledWith(`http://localhost:3000/api/print-points?${query}`, { cache: "no-store" });
+  });
 });

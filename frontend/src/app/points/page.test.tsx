@@ -29,13 +29,13 @@ describe("PointsContent", () => {
     auth.dataSource = "mock";
   });
 
-  it("asks for a city before loading the live guest catalog", async () => {
+  it("opens the live guest catalog with an optional city filter", async () => {
     auth.dataSource = "live";
     auth.getCurrentUser.mockResolvedValue(null);
 
     const { rerender } = render(await PointsContent({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByRole("textbox", { name: "Город" })).toBeRequired();
-    expect(screen.queryByTestId("point-selector")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Город" })).not.toBeRequired();
+    expect(screen.getByTestId("point-selector")).not.toHaveAttribute("data-city");
 
     rerender(await PointsContent({ searchParams: Promise.resolve({ city: "Калуга" }) }));
     expect(screen.getByTestId("point-selector")).toHaveAttribute("data-city", "Калуга");
