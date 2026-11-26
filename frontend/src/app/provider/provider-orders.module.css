@@ -117,8 +117,9 @@
   .table th:nth-child(1) { width: 22%; }
   .table th:nth-child(2) { width: 20%; }
   .table th:nth-child(3) { width: 21%; }
-  .table th:nth-child(4) { width: 15%; }
-  .table th:nth-child(5) { width: 22%; }
+  .table th:nth-child(4) { width: 16%; }
+  .table th:nth-child(5) { width: 21%; }
+  .table thead th:nth-child(4) { padding-inline: 3px; font-size: 12px; white-space: nowrap; }
   .table time { font-size: 12px; }
   .table .orderStatus { padding-inline: 4px; font-size: 12px; }
   .operationForm { display: grid; }
