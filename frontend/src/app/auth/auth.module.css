@@ -134,12 +134,9 @@
   align-items: center;
   gap: 8px;
   border: 1px solid var(--color-edge);
-  border-radius: 8px;
   padding: 8px 10px;
   cursor: pointer;
 }
-
-.roleGroup input { accent-color: var(--color-sky); }
 
 @media (max-width: 420px) {
   .roleGroup { grid-template-columns: 1fr; }
