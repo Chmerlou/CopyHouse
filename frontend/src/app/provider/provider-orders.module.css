@@ -1,0 +1,130 @@
+.switcher {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 28px;
+}
+
+.pointRow {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--ink);
+  background: var(--color-raised);
+  list-style: none;
+}
+
+.pointRow > li + li { border-inline-start: 1px solid var(--ink); }
+.pointChoice {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 750;
+  transition: background-color 150ms ease-out;
+}
+
+.pointChoice:hover { background: var(--color-panel); }
+.pointChoice[aria-pressed="true"] { background: #eff5da; box-shadow: inset 0 -3px var(--ink); }
+.pointChoice:disabled { cursor: progress; }
+.pointChoice:focus-visible, .tableScroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+.pointLabel { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.measurement {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  visibility: hidden;
+  white-space: nowrap;
+}
+.pointTooltip {
+  position: absolute;
+  z-index: 1;
+  inset: calc(100% + 5px) 4px auto;
+  display: none;
+  padding: 6px 8px;
+  border: 1px solid var(--ink);
+  background: var(--color-raised);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pointChoice:focus-visible .pointTooltip { display: block; }
+@media (hover: hover) and (pointer: fine) { .pointChoice:hover .pointTooltip { display: block; } }
+
+.queue { animation: showQueue 160ms ease-out; }
+.queue, .orderDetails { scroll-margin-top: calc(var(--site-header-height) + 16px); }
+@keyframes showQueue { from { opacity: 0.65; } to { opacity: 1; } }
+
+.notice {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--color-edge);
+  background: var(--color-raised);
+  color: var(--color-body);
+}
+.notice p { margin: 0; }
+.tableScroll { overflow-x: auto; border: 2px solid var(--ink); background: var(--color-raised); }
+.table { width: 100%; min-width: 650px; border-collapse: collapse; text-align: start; font-variant-numeric: tabular-nums; }
+.table th, .table td { padding: 8px 12px; text-align: start; white-space: nowrap; }
+.table thead { background: var(--color-panel); font-size: 14px; }
+.table tbody tr { border-top: 1px solid var(--color-edge); }
+.table tbody tr[data-selected="true"] { background: #eff5da; }
+.table tbody th { font-weight: 750; }
+
+.orderStatus {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid var(--ink);
+  background: var(--color-panel);
+  font-size: 13px;
+  font-weight: 750;
+}
+.orderStatus[data-status="READY"], .orderStatus[data-status="ISSUED"] { background: #eff5da; }
+.orderStatus[data-status="PRINTING"] { background: #fff1c8; }
+.orderStatus[data-status="CANCELLED"] { background: #fbe6e3; }
+
+.orderDetails { margin-top: 16px; }
+.detailHeading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.orderFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; margin: 14px 0 4px; }
+.orderFacts dt { color: var(--color-body); font-size: 14px; }
+.orderFacts dd { margin: 2px 0 0; font-weight: 750; }
+.detailLinks { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.orderControls { margin-top: 8px; }
+.feedback p:empty { margin: 0; padding: 0; border: 0; clip-path: inset(50%); }
+.operationForm { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; }
+.operationForm input { font-size: 16px; }
+.operationForm button { min-height: 44px; }
+.cancelOrder { margin-top: 12px; }
+.cancelOrder summary { display: list-item; width: fit-content; padding: 12px 0; cursor: pointer; font-weight: 650; }
+.cancelOrder .operationForm { padding-top: 4px; }
+.ratesSection { margin-top: 36px; }
+
+@media (max-width: 640px) {
+  .pointChoice { padding-inline: 8px; }
+  .table { min-width: 0; table-layout: fixed; font-size: 13px; }
+  .table thead { font-size: inherit; }
+  .table th, .table td { padding-inline: 5px; white-space: normal; overflow-wrap: anywhere; }
+  .table th:nth-child(1) { width: 22%; }
+  .table th:nth-child(2) { width: 20%; }
+  .table th:nth-child(3) { width: 21%; }
+  .table th:nth-child(4) { width: 15%; }
+  .table th:nth-child(5) { width: 22%; }
+  .table time { font-size: 12px; }
+  .table .orderStatus { padding-inline: 4px; font-size: 12px; }
+  .operationForm { display: grid; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pointChoice { transition: none; }
+  .queue { animation: none; }
+}

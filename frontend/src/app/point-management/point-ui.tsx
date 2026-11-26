@@ -47,22 +47,26 @@ export function readPointPage(value: string | string[] | undefined) {
     ? Math.min(maxPointPage, Math.max(1, Number(value))) : 1;
 }
 
-function pointPageHref(href: string, page: number) {
-  return page === 1 ? href : `${href}?page=${page}`;
-}
-
-export function PointPagination({ href, page, totalPages, label }: {
+export function PointPagination({ href, page, totalPages, label, param = "page" }: {
   href: string;
   page: number;
   totalPages: number;
   label: string;
+  param?: string;
 }) {
   if (totalPages <= 1 && page <= 1) return null;
+  function pageHref(target: number) {
+    const [path, query] = href.split("?");
+    const params = new URLSearchParams(query);
+    if (target === 1) params.delete(param);
+    else params.set(param, String(target));
+    return params.size ? `${path}?${params}` : path;
+  }
   return (
     <nav className={styles.pagination} aria-label={label}>
-      {page > 1 ? <Link href={pointPageHref(href, page - 1)}>Назад</Link> : null}
+      {page > 1 ? <Link href={pageHref(page - 1)}>Назад</Link> : null}
       <span>Страница {page} из {totalPages}</span>
-      {page < totalPages && page < maxPointPage ? <Link href={pointPageHref(href, page + 1)}>Дальше</Link> : null}
+      {page < totalPages && page < maxPointPage ? <Link href={pageHref(page + 1)}>Дальше</Link> : null}
     </nav>
   );
 }

@@ -20,6 +20,7 @@ export async function requirePointPage(role: PointRole, href: string) {
   const user = await getCurrentUser();
   if (!user) redirect(`${routes.login}?${new URLSearchParams({ returnTo: href })}`);
   if (user.role !== role) redirect(routeForUser(user));
+  return user;
 }
 
 export async function pointActionAccess(role: PointRole) {
