@@ -2,14 +2,38 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { printPointFixtures } from "@/shared/api/contract-fixtures";
+import type { ApiSchema } from "@/shared/api/contract";
 import {
   listPrintPoints,
   PointSelector,
   type ListPrintPoints,
 } from "./point-selector";
-import { SELECTED_PRINT_POINT_KEY } from "@/shared/order-draft";
+import { readPrintSettings, savePrintOptions, SELECTED_PRINT_POINT_KEY } from "@/shared/order-draft";
 
 const response = printPointFixtures.slice(0, 2);
+const printOptions = { documentId: "document-id", colorMode: "BW", copies: 2 } as const;
+const quote = {
+  ...printOptions,
+  id: "quote-id",
+  city: "Москва",
+  expiresAt: "2099-11-23T10:15:00.000Z",
+  pageCount: 12,
+  offers: response.map((point) => ({
+    printPointId: point.id,
+    name: point.name,
+    address: point.address,
+    city: point.city,
+    workingHours: point.workingHours,
+    pricePerPage: point.pricePerPageBw,
+    total: point.pricePerPageBw * 12 * 2,
+  })),
+} satisfies ApiSchema<"Quote">;
+
+vi.mock("next/link", () => ({
+  default: ({ children, href, onNavigate }: {
+    children: React.ReactNode; href: string; onNavigate?: (event: { preventDefault(): void }) => void;
+  }) => <a href={href} onClick={(event) => { event.preventDefault(); onNavigate?.(event); }}>{children}</a>,
+}));
 
 describe("PointSelector", () => {
   beforeEach(() => {
@@ -61,15 +85,15 @@ describe("PointSelector", () => {
         pagination: { page: 2, limit: 2, totalItems: 3, totalPages: 2 },
       }), { status: 200 }));
 
-    await expect(listPrintPoints()).resolves.toEqual(printPointFixtures.slice(0, 3));
+    await expect(listPrintPoints("Новый город")).resolves.toEqual(printPointFixtures.slice(0, 3));
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "/api/print-points?page=1&limit=100",
+      `/api/print-points?page=1&limit=100&${new URLSearchParams({ city: "Новый город" })}`,
       { cache: "no-store" },
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "/api/print-points?page=2&limit=100",
+      `/api/print-points?page=2&limit=100&${new URLSearchParams({ city: "Новый город" })}`,
       { cache: "no-store" },
     );
   });
@@ -93,23 +117,60 @@ describe("PointSelector", () => {
       .toBeChecked();
   });
 
-  it("opens print settings after a point is selected", async () => {
+  it("compares server totals and saves the selected offer for checkout", async () => {
     const user = userEvent.setup();
-    const listPrintPoints = vi.fn<ListPrintPoints>().mockResolvedValue(response);
+    const createQuote = vi.fn().mockResolvedValue(quote);
+    savePrintOptions(printOptions);
 
     render(
       <PointSelector
-        listPrintPoints={listPrintPoints}
-        continueHref="/configure/document-id"
+        documentId={printOptions.documentId}
+        createQuote={createQuote}
+        continueHref="/checkout/document-id"
+        continueLabel="Перейти к подтверждению"
       />,
     );
 
-    expect(screen.queryByRole("link", { name: "Настроить печать" }))
-      .not.toBeInTheDocument();
-    await user.click(await screen.findByRole("radio", { name: /CopyHouse Дорожная/ }));
+    expect(await screen.findByText(/120,00\s*₽/)).toBeVisible();
+    expect(screen.getByText(/144,00\s*₽/)).toBeVisible();
+    expect(createQuote).toHaveBeenCalledWith(printOptions);
+    expect(screen.queryByRole("link", { name: "Перейти к подтверждению" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: /CopyHouse Тверская/ }));
+    const checkout = screen.getByRole("link", { name: "Перейти к подтверждению" });
+    expect(checkout).toHaveAttribute("href", "/checkout/document-id");
+    await user.click(checkout);
+    expect(readPrintSettings(printOptions.documentId)).toMatchObject({
+      quoteId: quote.id,
+      printPointId: response[1].id,
+      total: 14400,
+    });
+  });
 
-    expect(screen.getByRole("link", { name: "Настроить печать" }))
-      .toHaveAttribute("href", "/configure/document-id");
+  it("preselects a catalogue choice if it has a matching offer", async () => {
+    sessionStorage.setItem(SELECTED_PRINT_POINT_KEY, response[0].id);
+    savePrintOptions(printOptions);
+    render(<PointSelector documentId={printOptions.documentId} createQuote={async () => quote} />);
+    expect(await screen.findByRole("radio", { name: /CopyHouse Дорожная/ })).toBeChecked();
+  });
+
+  it("explains when the saved point is unavailable and lets the user pick another", async () => {
+    sessionStorage.setItem(SELECTED_PRINT_POINT_KEY, "point-in-another-city");
+    savePrintOptions(printOptions);
+    render(<PointSelector documentId={printOptions.documentId} createQuote={async () => quote} />);
+    expect(await screen.findByText("Выбранный ранее копицентр недоступен для этого заказа. Выберите другой.")).toBeVisible();
+    expect(screen.getByRole("radio", { name: /CopyHouse Дорожная/ })).not.toBeChecked();
+  });
+
+  it("retries a failed quote and keeps valid options", async () => {
+    const user = userEvent.setup();
+    const createQuote = vi.fn().mockRejectedValueOnce(new Error("Не удалось рассчитать цены"))
+      .mockResolvedValueOnce({ ...quote, offers: [] });
+    savePrintOptions(printOptions);
+    render(<PointSelector documentId={printOptions.documentId} createQuote={createQuote} />);
+    await screen.findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "Повторить" }));
+    expect(await screen.findByText("Нет предложений для этих параметров")).toBeVisible();
+    expect(createQuote).toHaveBeenLastCalledWith(printOptions);
   });
 
   it("shows the approved empty catalogue text", async () => {
@@ -119,23 +180,24 @@ describe("PointSelector", () => {
 
     expect(await screen.findByText("В вашем городе пока нет точек печати"))
       .toBeInTheDocument();
-    expect(screen.getByText("Когда точки появятся, они будут показаны здесь."))
+    expect(screen.getByText("Попробуйте зайти позже."))
       .toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Обновить" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Обновить список" })).toBeEnabled();
   });
 
   it("shows an error and retries the request", async () => {
     const user = userEvent.setup();
     const listPrintPoints = vi
       .fn<ListPrintPoints>()
-      .mockRejectedValueOnce(new Error("Нет соединения. Проверьте интернет и повторите попытку."))
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
       .mockResolvedValueOnce(response);
 
     render(<PointSelector listPrintPoints={listPrintPoints} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Нет соединения. Проверьте интернет и повторите попытку.",
+      "Не удалось загрузить точки",
     );
+    expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Повторить" }));
 
     expect(await screen.findByRole("radio", { name: /CopyHouse Дорожная/ }))

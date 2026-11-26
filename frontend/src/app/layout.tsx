@@ -4,9 +4,9 @@ import { SiteHeader } from "./site-header";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CopyHouse | Печать рядом",
+  title: "CopyHouse | Печать PDF",
   description:
-    "Сравните копицентры рядом, узнайте цену печати и отправьте документ в заказ.",
+    "Сравните цены на печать PDF в копицентрах вашего города и оформите заказ онлайн.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

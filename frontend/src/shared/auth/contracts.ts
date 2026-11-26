@@ -28,7 +28,7 @@ export function validateLogin(input: LoginInput): FieldErrors {
 export function validateRegistration(input: RegisterInput): FieldErrors {
   const errors = validateLogin(input);
   if (!/^(?=.*[A-Za-z])(?=.*\d).{8,72}$/.test(input.password)) {
-    errors.password = "От 8 до 72 символов, минимум одна латинская буква и одна цифра";
+    errors.password = "Укажите от 8 до 72 символов, включая латинскую букву и цифру.";
   }
   if (!input.city.trim()) errors.city = "Укажите город";
   if (input.role !== "CLIENT" && input.role !== "PrintProvider") {
@@ -38,5 +38,7 @@ export function validateRegistration(input: RegisterInput): FieldErrors {
 }
 
 export function routeForUser(user: User) {
-  return user.role === "PrintProvider" ? routes.provider : routes.upload;
+  if (user.role === "ADMIN") return routes.adminPoints;
+  if (user.role === "PrintProvider") return routes.provider;
+  return routes.upload;
 }

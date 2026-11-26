@@ -105,7 +105,7 @@ describe("RegisterForm", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<RegisterForm returnTo="/upload" />);
 
-    await user.click(screen.getByLabelText("Компания печати"));
+    await user.click(screen.getByLabelText("Для копицентра"));
     await user.type(screen.getByLabelText("Email"), "office@copyhouse.test");
     await user.type(screen.getByLabelText("Пароль"), "password1");
     await user.type(screen.getByLabelText("Город"), "Москва");

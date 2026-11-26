@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { routeForUser } from "@/shared/auth/contracts";
 import { getCurrentUser } from "@/shared/auth/server";
 import { routes } from "@/shared/routes";
 import { UploadPageClient } from "./upload-page-client";
@@ -19,7 +20,7 @@ async function ProtectedUploadPage() {
   await connection();
   const user = await getCurrentUser();
   if (!user) redirect(`${routes.login}?returnTo=${encodeURIComponent(routes.upload)}`);
-  if (user.role !== "CLIENT") redirect(routes.provider);
+  if (user.role !== "CLIENT") redirect(routeForUser(user));
 
   return (
     <main id="main-content" tabIndex={-1} className={styles.page}>
@@ -29,8 +30,8 @@ async function ProtectedUploadPage() {
           <UploadPageClient />
           <aside className={styles.note}>
             <div>
-              <strong>Ваш файл защищён</strong>
-              <p>Он будет доступен только вам и выбранной точке печати.</p>
+              <strong>Кто увидит файл</strong>
+              <p>Файл доступен вам. Выбранный копицентр получит доступ после оплаты заказа.</p>
             </div>
             <PixelSprite kind="paper" className={styles.noteArt} />
           </aside>

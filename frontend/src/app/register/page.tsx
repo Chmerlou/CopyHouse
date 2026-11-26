@@ -5,14 +5,14 @@ import styles from "../auth/auth.module.css";
 export const instant = false;
 
 export default async function RegisterPage({ searchParams }: {
-  searchParams: Promise<{ returnTo?: string }>;
+  searchParams: Promise<{ returnTo?: string; city?: string }>;
 }) {
   const params = await searchParams;
   return (
     <AuthShell scene="welcome">
       <h1>Регистрация</h1>
-      <p className={styles.intro}>Создайте клиентский или корпоративный аккаунт.</p>
-      <RegisterForm returnTo={params.returnTo ?? null} />
+      <p className={styles.intro}>Выберите тип аккаунта: для себя или для копицентра.</p>
+      <RegisterForm returnTo={params.returnTo ?? null} initialCity={params.city} />
     </AuthShell>
   );
 }

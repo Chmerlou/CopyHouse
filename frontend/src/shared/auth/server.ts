@@ -7,7 +7,7 @@ import { verifyMockSession } from "./mock-token";
 export const SESSION_COOKIE = "copyhouse_session";
 export const MOCK_ACCOUNT_COOKIE = "copyhouse_mock_account";
 export const dataSource = process.env.COPYHOUSE_DATA_SOURCE === "live" ? "live" : "mock";
-export const apiBaseUrl = process.env.COPYHOUSE_API_BASE_URL ?? "http://127.0.0.1:3001/api";
+export const apiBaseUrl = process.env.COPYHOUSE_API_BASE_URL ?? "http://localhost:3000/api";
 
 export async function getCurrentUser(): Promise<User | null> {
   const session = (await cookies()).get(SESSION_COOKIE)?.value;

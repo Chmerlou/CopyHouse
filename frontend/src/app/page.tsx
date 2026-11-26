@@ -8,17 +8,17 @@ const orderSteps = [
   {
     title: "Загрузите файл",
     art: "paper",
-    text: "После загрузки CopyHouse покажет, сколько страниц в документе.",
+    text: "Загрузите один PDF до 50 МБ. Количество страниц определится автоматически.",
+  },
+  {
+    title: "Настройте печать",
+    art: "printer",
+    text: "Выберите чёрно-белую или цветную печать и укажите число копий.",
   },
   {
     title: "Сравните точки",
     art: "kiosk",
-    text: "Сравните адреса, часы работы и тарифы в своём городе.",
-  },
-  {
-    title: "Проверьте заказ",
-    art: "printer",
-    text: "Выберите цветность и число копий, затем проверьте итоговую сумму перед оформлением.",
+    text: "Сравните полную стоимость, адреса и часы работы копицентров.",
   },
 ] as const;
 
@@ -30,7 +30,7 @@ export default function Home() {
           <Image
             className={`${styles.heroArt} ${styles.desktopArt}`}
             src="/images/copyhouse-hero-desktop.webp"
-            alt="Пиксельный университетский кампус и копицентр с открытой комнатой печати"
+            alt=""
             fill
             sizes="(max-width: 899px) 0px, 100vw"
             priority
@@ -38,7 +38,7 @@ export default function Home() {
           <Image
             className={`${styles.heroArt} ${styles.mobileArt}`}
             src="/images/copyhouse-hero-mobile.webp"
-            alt="Пиксельная комната копицентра с несколькими принтерами, полками и растениями"
+            alt=""
             fill
             sizes="(max-width: 899px) 100vw, 0px"
             priority
@@ -46,15 +46,15 @@ export default function Home() {
 
           <div className={styles.heroContent}>
             <h1 id="hero-title" className={styles.title}>
-              <span>Загрузил. Сравнил.</span>
-              <span>Напечатал.</span>
+              <span>Загрузите PDF.</span>{" "}
+              <span>Выберите копицентр.</span>
             </h1>
             <p className={styles.lead}>
-              CopyHouse находит точку печати рядом и показывает цену до оплаты.
+              Сравните стоимость печати до оплаты и заберите распечатки по коду.
             </p>
             <div className={styles.actions}>
               <Link className={styles.primaryAction} href={routes.upload}>
-                Загрузить документ
+                Начать заказ
               </Link>
               <Link className={styles.secondaryAction} href={routes.points}>
                 Посмотреть точки
@@ -63,10 +63,10 @@ export default function Home() {
           </div>
 
           <ol className={styles.statuses} aria-label="Этапы заказа">
-            <li className={styles.status}>Файл загружен</li>
-            <li className={styles.status}>Точка найдена</li>
+            <li className={styles.status}>Загрузить PDF</li>
+            <li className={styles.status}>Настроить печать</li>
             <li className={`${styles.status} ${styles.statusReady}`}>
-              Заказ готов
+              Сравнить цены
             </li>
           </ol>
         </section>
@@ -103,12 +103,16 @@ export default function Home() {
                 <p>Один PDF до 50 МБ на заказ. Если нужны только отдельные страницы, сохраните их в новый PDF перед загрузкой.</p>
               </details>
               <details>
-                <summary>Как избежать ошибок в файле?</summary>
-                <p>Откройте готовый PDF и проверьте поля, ориентацию и порядок страниц. Если нужно что-то исправить, замените файл до отправки.</p>
+                <summary>Что проверить перед загрузкой?</summary>
+                <p>Откройте PDF и проверьте поля, ориентацию и порядок страниц. Убедитесь, что в файле только те страницы, которые нужно напечатать.</p>
               </details>
               <details>
-                <summary>Как работает оплата в этой версии?</summary>
-                <p>После оформления нажмите «Оплатить (тест)». Это сменит статус заказа без списания денег.</p>
+                <summary>Будут ли списаны деньги?</summary>
+                <p>Нет. Сейчас оплата работает в тестовом режиме. Заказ получит статус «Оплачен», а деньги не спишутся.</p>
+              </details>
+              <details>
+                <summary>Как забрать заказ?</summary>
+                <p>Откройте заказ в разделе «Мои заказы». Когда распечатки будут готовы, появится код выдачи. Покажите его сотруднику копицентра.</p>
               </details>
             </div>
           </div>
@@ -117,11 +121,10 @@ export default function Home() {
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
           <Link className={styles.footerBrand} href={routes.home} aria-label="CopyHouse, главная">COPYHOUSE</Link>
-          <nav aria-label="Ссылки в подвале">
+          <nav aria-label="Нижняя навигация">
             <Link href="/#how-it-works">Как работает</Link>
             <Link href="/#pdf-guide">Подготовка PDF</Link>
             <Link href={routes.points}>Точки печати</Link>
-            <Link href={routes.login}>Войти</Link>
           </nav>
         </div>
       </footer>

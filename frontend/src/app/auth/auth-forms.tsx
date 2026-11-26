@@ -17,9 +17,10 @@ import styles from "./auth.module.css";
 
 type ErrorBody = Pick<ApiSchema<"Error">, "code" | "message">;
 
-export function LoginForm({ returnTo, initialEmail = "" }: {
+export function LoginForm({ returnTo, initialEmail = "", city }: {
   returnTo: string | null;
   initialEmail?: string;
+  city?: string;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState(initialEmail);
@@ -27,6 +28,8 @@ export function LoginForm({ returnTo, initialEmail = "" }: {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const registerQuery = new URLSearchParams({ returnTo: safeReturnTo(returnTo) });
+  if (typeof city === "string" && city.trim()) registerQuery.set("city", city.trim().slice(0, 100));
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +51,9 @@ export function LoginForm({ returnTo, initialEmail = "" }: {
       const body = await response.json() as { user: ApiSchema<"User"> } | ErrorBody;
       if (!response.ok || !("user" in body)) {
         if (response.status === 401) setPassword("");
-        setMessage("Неверный email или пароль");
+        setMessage(response.status === 401
+          ? "Неверный email или пароль"
+          : "Не удалось войти. Попробуйте ещё раз.");
         return;
       }
 
@@ -58,7 +63,7 @@ export function LoginForm({ returnTo, initialEmail = "" }: {
       router.push(destination);
       router.refresh();
     } catch {
-      setMessage("Не удалось войти. Проверьте соединение и повторите попытку");
+      setMessage("Не удалось войти. Попробуйте ещё раз.");
     } finally {
       setIsSubmitting(false);
     }
@@ -89,17 +94,17 @@ export function LoginForm({ returnTo, initialEmail = "" }: {
         {isSubmitting ? "Входим…" : "Войти"}
       </Button>
       <p className={styles.switchCopy}>
-        Нет аккаунта? <Link href={`${routes.register}?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`}>Зарегистрироваться</Link>
+        Нет аккаунта? <Link href={`${routes.register}?${registerQuery}`}>Зарегистрироваться</Link>
       </p>
     </form>
   );
 }
 
-export function RegisterForm({ returnTo }: { returnTo: string | null }) {
+export function RegisterForm({ returnTo, initialCity = "" }: { returnTo: string | null; initialCity?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [city, setCity] = useState("");
+  const [city, setCity] = useState(typeof initialCity === "string" ? initialCity.trim().slice(0, 100) : "");
   const [role, setRole] = useState<RegisterRole>("CLIENT");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<string | null>(null);
@@ -125,8 +130,8 @@ export function RegisterForm({ returnTo }: { returnTo: string | null }) {
       if (!response.ok) {
         const body = await response.json() as ErrorBody;
         setMessage(body.code === "EMAIL_ALREADY_USED"
-          ? "Этот email уже используется"
-          : "Не удалось завершить регистрацию");
+          ? "Аккаунт с таким email уже есть. Войдите или укажите другой адрес."
+          : "Не удалось создать аккаунт. Проверьте данные и попробуйте ещё раз.");
         return;
       }
 
@@ -137,7 +142,7 @@ export function RegisterForm({ returnTo }: { returnTo: string | null }) {
       });
       router.push(`${routes.login}?${query}`);
     } catch {
-      setMessage("Не удалось завершить регистрацию. Повторите попытку");
+      setMessage("Не удалось создать аккаунт. Попробуйте ещё раз.");
     } finally {
       setIsSubmitting(false);
     }
@@ -155,7 +160,7 @@ export function RegisterForm({ returnTo }: { returnTo: string | null }) {
             checked={role === "CLIENT"}
             onChange={() => setRole("CLIENT")}
           />
-          Клиент
+          Для себя
         </label>
         <label>
           <input
@@ -165,7 +170,7 @@ export function RegisterForm({ returnTo }: { returnTo: string | null }) {
             checked={role === "PrintProvider"}
             onChange={() => setRole("PrintProvider")}
           />
-          Компания печати
+          Для копицентра
         </label>
       </fieldset>
       <Field
@@ -184,13 +189,15 @@ export function RegisterForm({ returnTo }: { returnTo: string | null }) {
         autoComplete="new-password"
         value={password}
         error={errors.password}
-        hint="От 8 до 72 символов, минимум одна латинская буква и одна цифра"
+        hint="От 8 до 72 символов, включая латинскую букву и цифру."
         onChange={(event) => setPassword(event.target.value)}
       />
       <Field
         label="Город"
         name="city"
+        maxLength={100}
         autoComplete="address-level2"
+        hint={role === "CLIENT" ? "Покажем копицентры в этом городе." : undefined}
         value={city}
         error={errors.city}
         onChange={(event) => setCity(event.target.value)}

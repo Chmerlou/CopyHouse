@@ -55,6 +55,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Выйти на всех устройствах
+         * @description Нужен ещё действующий access-токен.
+         *     Сервер увеличивает версию сессии пользователя на 1.
+         *     Все JWT, выданные до этого вызова, получают `401 UNAUTHORIZED`,
+         *     включая токены на других устройствах. Новый вход выдаёт токен уже с новой версией.
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/me": {
         parameters: {
             query?: never;
@@ -158,13 +181,17 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Каталог точек, доступных для заказа
-         * @description Любая авторизованная роль. Город берётся из профиля и в запрос не передаётся.
-         *     В списке только точки города пользователя со статусом `APPROVED`, `isActive = true`
+         * Каталог точек и цен
+         * @description Токен не обязателен. Гость передаёт `city`.
+         *     Если заголовок `Authorization` есть и токен действующий, город берётся из профиля,
+         *     а query `city` игнорируется.
+         *     Нет заголовка — гостевой режим. Заголовок с просроченным, поддельным или отозванным
+         *     токеном даёт `401`, а не гостевой каталог.
+         *     В списке только точки выбранного города со статусом `APPROVED`, `isActive = true`
          *     и обеими ставками больше нуля. Другие города в ответ не попадают.
          *     Сравнение города без учёта регистра и пробелов по краям.
-         *     `q` ищет по названию и адресу уже внутри города профиля.
-         *     Если точек в городе нет, `items` пустой.
+         *     `q` ищет по названию и адресу уже внутри этого города.
+         *     Если точек нет, `items` пустой.
          */
         get: operations["listPrintPoints"];
         put?: never;
@@ -768,7 +795,8 @@ export interface components {
             /** @example Bearer */
             tokenType: string;
             /**
-             * @description Срок access-токена в секундах. Refresh-токена в MVP нет.
+             * @description Срок access-токена в секундах. Refresh-токена нет.
+             *     До истечения срока все копии отзывает `POST /auth/logout`.
              * @example 604800
              */
             expiresIn: number;
@@ -1043,8 +1071,14 @@ export interface components {
          *     Хранится хеш тела, код и тело ответа. Повтор до завершения первого запроса не создаёт второй заказ.
          */
         IdempotencyKey: string;
+        /** @description Номер страницы. Больше 1000 сервер не принимает, чтобы не строить огромный OFFSET. */
         Page: number;
         Limit: number;
+        /**
+         * @description Город каталога для гостя. В запросе с действующим токеном не используется:
+         *     город берётся из профиля. Без токена поле обязательно.
+         */
+        CatalogCity: components["schemas"]["City"];
         /** @description Для админки фильтр необязателен. Без него видны точки всех городов. */
         CityFilter: components["schemas"]["City"];
         /** @description Поиск по названию или адресу */
@@ -1163,6 +1197,25 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Все сессии отозваны. Тела нет. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     getMe: {
@@ -1324,6 +1377,12 @@ export interface operations {
     listPrintPoints: {
         parameters: {
             query?: {
+                /**
+                 * @description Город каталога для гостя. В запросе с действующим токеном не используется:
+                 *     город берётся из профиля. Без токена поле обязательно.
+                 */
+                city?: components["parameters"]["CatalogCity"];
+                /** @description Номер страницы. Больше 1000 сервер не принимает, чтобы не строить огромный OFFSET. */
                 page?: components["parameters"]["Page"];
                 limit?: components["parameters"]["Limit"];
                 /** @description Поиск по названию или адресу */
@@ -1378,6 +1437,7 @@ export interface operations {
     listMyPrintPoints: {
         parameters: {
             query?: {
+                /** @description Номер страницы. Больше 1000 сервер не принимает, чтобы не строить огромный OFFSET. */
                 page?: components["parameters"]["Page"];
                 limit?: components["parameters"]["Limit"];
             };
@@ -1554,6 +1614,7 @@ export interface operations {
     listMyOrders: {
         parameters: {
             query?: {
+                /** @description Номер страницы. Больше 1000 сервер не принимает, чтобы не строить огромный OFFSET. */
                 page?: components["parameters"]["Page"];
                 limit?: components["parameters"]["Limit"];
                 status?: components["parameters"]["OrderStatusFilter"];
@@ -1741,6 +1802,7 @@ export interface operations {
     listPointOrders: {
         parameters: {
             query?: {
+                /** @description Номер страницы. Больше 1000 сервер не принимает, чтобы не строить огромный OFFSET. */
                 page?: components["parameters"]["Page"];
                 limit?: components["parameters"]["Limit"];
                 status?: components["parameters"]["OrderStatusFilter"];
@@ -1960,6 +2022,7 @@ export interface operations {
     listAdminPrintPoints: {
         parameters: {
             query?: {
+                /** @description Номер страницы. Больше 1000 сервер не принимает, чтобы не строить огромный OFFSET. */
                 page?: components["parameters"]["Page"];
                 limit?: components["parameters"]["Limit"];
                 /** @description Поиск по названию или адресу */

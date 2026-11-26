@@ -98,14 +98,25 @@ describe("UploadForm", () => {
     expect(uploadDocument).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Загрузить файл" }));
 
-    expect(await screen.findByText("Документ загружен")).toBeInTheDocument();
+    expect(await screen.findByText("Файл загружен")).toBeInTheDocument();
     expect(screen.getByText("12 страниц")).toBeInTheDocument();
     expect(uploadDocument).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledWith([
       expect.objectContaining({ id: "document-lecture.pdf" }),
     ]);
-    expect(screen.getByRole("link", { name: "Выбрать точку" }))
-      .toHaveAttribute("href", "/points?documentId=document-lecture.pdf");
+    expect(screen.getByRole("link", { name: "Настроить печать" }))
+      .toHaveAttribute("href", "/configure/document-lecture.pdf");
+  });
+
+  it("explains when the server rejects a damaged PDF", async () => {
+    const user = userEvent.setup();
+    const uploadDocument = vi.fn<UploadDocument>().mockRejectedValue(new Error("INVALID_PDF"));
+
+    render(<UploadForm uploadDocument={uploadDocument} />);
+    await user.upload(screen.getByLabelText("Выбрать файл"), lecturePdf);
+    await user.click(screen.getByRole("button", { name: "Загрузить файл" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Не удалось прочитать PDF");
   });
 
   it("retries a failed upload", async () => {
@@ -123,11 +134,11 @@ describe("UploadForm", () => {
     await user.click(screen.getByRole("button", { name: "Загрузить файл" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Нет соединения. Проверьте интернет и повторите попытку",
+      "Не удалось загрузить файл. Попробуйте ещё раз.",
     );
     await user.click(screen.getByRole("button", { name: "Повторить загрузку" }));
 
-    expect(await screen.findByText("Документ загружен")).toBeInTheDocument();
+    expect(await screen.findByText("Файл загружен")).toBeInTheDocument();
     expect(uploadDocument).toHaveBeenCalledTimes(2);
   });
 });

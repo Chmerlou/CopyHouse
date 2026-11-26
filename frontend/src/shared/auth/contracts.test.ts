@@ -25,5 +25,7 @@ describe("auth contracts", () => {
       .toBe("/upload");
     expect(routeForUser({ id: "2", email: "p@b.ru", city: "Москва", role: "PrintProvider" }))
       .toBe("/provider");
+    expect(routeForUser({ id: "3", email: "admin@b.ru", city: "Москва", role: "ADMIN" }))
+      .toBe("/admin/print-points");
   });
 });

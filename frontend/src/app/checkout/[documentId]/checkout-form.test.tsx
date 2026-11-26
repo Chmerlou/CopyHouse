@@ -29,12 +29,23 @@ describe("CheckoutForm", () => {
     expect(screen.getByText("CopyHouse Дорожная")).toBeInTheDocument();
     expect(screen.getByText(/120,00\s*₽/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Оформить заказ" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Нет соединения");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Не удалось оформить заказ");
     await user.click(screen.getByRole("button", { name: "Повторить" }));
 
     expect(createOrder).toHaveBeenCalledTimes(2);
     expect(createOrder.mock.calls[0][0]).toEqual(createOrder.mock.calls[1][0]);
     expect(createOrder.mock.calls[0][1]).toBe(createOrder.mock.calls[1][1]);
     expect(push).toHaveBeenCalledWith("/orders/order-one");
+  });
+
+  it("returns the user to comparison when the backend price changes", async () => {
+    const user = userEvent.setup();
+    const createOrder = vi.fn<CreateOrder>().mockRejectedValue(new Error("PRICE_CHANGED"));
+    render(<CheckoutForm documentId="document-one" createOrder={createOrder} />);
+
+    await user.click(screen.getByRole("button", { name: "Оформить заказ" }));
+    expect(await screen.findByRole("link", { name: "Пересчитать цены" }))
+      .toHaveAttribute("href", "/points?documentId=document-one");
+    expect(push).not.toHaveBeenCalled();
   });
 });

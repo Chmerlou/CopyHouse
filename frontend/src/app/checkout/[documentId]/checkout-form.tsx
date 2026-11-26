@@ -15,6 +15,10 @@ export type CreateOrder = (
 
 const money = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", minimumFractionDigits: 2 });
 const subscribeToHydration = () => () => {};
+const quoteConflicts = new Set([
+  "QUOTE_EXPIRED", "QUOTE_NOT_FOUND", "QUOTE_POINT_MISMATCH", "CITY_CHANGED", "PRICE_CHANGED",
+  "PRINT_POINT_NOT_FOUND", "PRINT_POINT_NOT_APPROVED", "PRINT_POINT_INACTIVE", "TARIFF_MISSING",
+]);
 
 async function requestOrder(input: ApiSchema<"CreateOrderRequest">, idempotencyKey: string) {
   const response = await fetch("/api/orders", {
@@ -22,7 +26,10 @@ async function requestOrder(input: ApiSchema<"CreateOrderRequest">, idempotencyK
     headers: { "content-type": "application/json", "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(input),
   });
-  if (!response.ok) throw new Error("create_order_failed");
+  if (!response.ok) {
+    const error = await response.json().catch(() => null) as { code?: string } | null;
+    throw new Error(error?.code ?? "create_order_failed");
+  }
   return response.json() as Promise<ApiSchema<"OrderClient">>;
 }
 
@@ -33,8 +40,9 @@ export function CheckoutForm({ documentId, createOrder = requestOrder }: { docum
     ? readPendingDocuments().find((item) => item.id === documentId) ?? null
     : null;
   const settings = hydrated ? readPrintSettings(documentId) : null;
-  const idempotencyKey = useRef<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "submitting" | "error">("idle");
+  const attempt = useRef<{ quoteId: string; printPointId: string; key: string } | null>(null);
+  const [failure, setFailure] = useState<{ settingsId: string; type: "error" | "recalculate" } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (!hydrated) {
     return <section className={styles.card} aria-busy="true"><p>Загружаем заказ…</p></section>;
@@ -43,29 +51,42 @@ export function CheckoutForm({ documentId, createOrder = requestOrder }: { docum
   if (!document || !settings) {
     return (
       <section className={styles.card} aria-labelledby="checkout-title">
-        <h1 id="checkout-title">Не хватает данных заказа</h1>
-        <p role="alert">Вернитесь к настройке файла и повторите расчёт.</p>
-        <Link className={styles.secondary} href={routes.configure(documentId)}>Вернуться к настройке</Link>
+        <h1 id="checkout-title">Выберите копицентр</h1>
+        <p role="alert">Вернитесь к списку точек, чтобы выбрать копицентр и проверить цену.</p>
+        <Link className={styles.secondary} href={routes.orderPoints(documentId)}>Вернуться к выбору точки</Link>
       </section>
     );
   }
 
+  const { quoteId, printPointId } = settings;
+  const settingsId = `${quoteId}:${printPointId}`;
+  const error = failure?.settingsId === settingsId ? failure.type : null;
+
   async function submit() {
-    if (status === "submitting") return;
-    setStatus("submitting");
+    if (submitting || error === "recalculate") return;
+    if (Date.parse(settings!.expiresAt) <= Date.now()) {
+      setFailure({ settingsId, type: "recalculate" });
+      return;
+    }
+    setSubmitting(true);
+    setFailure(null);
     try {
-      idempotencyKey.current ??= crypto.randomUUID();
-      const order = await createOrder({ quoteId: settings!.quoteId, printPointId: settings!.printPointId }, idempotencyKey.current);
+      if (attempt.current?.quoteId !== quoteId || attempt.current.printPointId !== printPointId) {
+        attempt.current = { quoteId, printPointId, key: crypto.randomUUID() };
+      }
+      const order = await createOrder({ quoteId, printPointId }, attempt.current.key);
       router.push(routes.order(order.id));
-    } catch {
-      setStatus("error");
+    } catch (reason) {
+      setFailure({ settingsId, type: reason instanceof Error && quoteConflicts.has(reason.message) ? "recalculate" : "error" });
+    } finally {
+      setSubmitting(false);
     }
   }
 
   return (
     <section className={styles.card} aria-labelledby="checkout-title">
       <h1 id="checkout-title">Проверьте заказ</h1>
-      <p className={styles.lead}>В заказ войдёт один PDF. После оформления его можно оплатить тестовой кнопкой.</p>
+      <p className={styles.lead}>Проверьте файл, параметры печати и адрес копицентра.</p>
       <dl className={styles.summary}>
         <div><dt>Файл</dt><dd>{document.originalName}</dd></div>
         <div><dt>Страниц</dt><dd>{document.pageCount}</dd></div>
@@ -75,10 +96,18 @@ export function CheckoutForm({ documentId, createOrder = requestOrder }: { docum
         <div><dt>Цена за страницу</dt><dd>{money.format(settings.pricePerPage / 100)}</dd></div>
         <div className={styles.total}><dt>Итого</dt><dd>{money.format(settings.total / 100)}</dd></div>
       </dl>
-      {status === "error" ? <p className={styles.error} role="alert">Нет соединения. Проверьте интернет и повторите попытку.</p> : null}
-      <button className={styles.primary} type="button" disabled={status === "submitting"} onClick={submit}>
-        {status === "error" ? "Повторить" : status === "submitting" ? "Оформляем…" : "Оформить заказ"}
-      </button>
+      <p className={styles.paymentNote}>Тестовая оплата. Деньги не спишутся.</p>
+      {error === "error" ? <p className={styles.error} role="alert">Не удалось оформить заказ. Попробуйте ещё раз.</p> : null}
+      {error === "recalculate" ? (
+        <>
+          <p className={styles.error} role="alert">Нужно обновить расчёт. Вернитесь к выбору точки, чтобы проверить цену и доступность.</p>
+          <Link className={styles.secondary} href={routes.orderPoints(documentId)}>Пересчитать цены</Link>
+        </>
+      ) : (
+        <button className={styles.primary} type="button" disabled={submitting} onClick={submit}>
+          {submitting ? "Оформляем…" : error ? "Повторить" : "Оформить заказ"}
+        </button>
+      )}
     </section>
   );
 }

@@ -4,7 +4,7 @@ import { type ChangeEvent, type DragEvent, useState } from "react";
 import Link from "next/link";
 import type { ApiSchema } from "@/shared/api/contract";
 import { routes } from "@/shared/routes";
-import { uploadDocument as defaultUploadDocument } from "./upload-client";
+import { uploadDocument as defaultUploadDocument, uploadErrorMessages } from "./upload-client";
 import styles from "./upload.module.css";
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
@@ -29,7 +29,7 @@ function validatePdf(file: File): string | null {
     file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
   if (!isPdf) return "Выберите файл в формате PDF";
-  if (file.size === 0) return "PDF не должен быть пустым";
+  if (file.size === 0) return "Файл пуст. Выберите другой PDF.";
   if (file.size > MAX_PDF_BYTES) {
     return "Размер PDF не должен превышать 50 МБ";
   }
@@ -81,7 +81,7 @@ export function UploadForm({
   function addFiles(nextFiles: File[]) {
     if (status !== "idle") return;
     if (nextFiles.length !== 1) {
-      setError("Для одного заказа можно загрузить только один PDF");
+      setError("Для одного заказа можно загрузить только один PDF.");
       return;
     }
     const validationError = validatePdf(nextFiles[0]);
@@ -133,7 +133,7 @@ export function UploadForm({
     setStatus("uploading");
     setError(null);
     const completed = { ...resultsByFile };
-    let hasFailure = false;
+    let failure: string | null = null;
 
     for (const file of files) {
       const key = fileKey(file);
@@ -149,14 +149,17 @@ export function UploadForm({
         completed[key] = uploaded;
         setResultsByFile({ ...completed });
         setProgressByFile((current) => ({ ...current, [key]: 100 }));
-      } catch {
-        hasFailure = true;
+      } catch (reason) {
+        const code = reason instanceof Error ? reason.message : "";
+        failure = Object.hasOwn(uploadErrorMessages, code)
+          ? uploadErrorMessages[code]
+          : "Не удалось загрузить файл. Попробуйте ещё раз.";
         setProgressByFile((current) => ({ ...current, [key]: 0 }));
       }
     }
 
-    if (hasFailure) {
-      setError("Нет соединения. Проверьте интернет и повторите попытку");
+    if (failure) {
+      setError(failure);
       setStatus("error");
     } else {
       onComplete?.(files.map((file) => completed[fileKey(file)]));
@@ -168,7 +171,7 @@ export function UploadForm({
     <section className={styles.workspace} aria-labelledby="upload-title">
       <div className={styles.heading}>
         <h1 id="upload-title">Загрузите <span>файл</span></h1>
-        <p>Один PDF до 50 МБ. После загрузки мы проверим количество страниц.</p>
+        <p>Загрузите один PDF размером до 50 МБ. Количество страниц определится автоматически.</p>
       </div>
 
       <p className={styles.srOnly} aria-live="polite">
@@ -253,7 +256,7 @@ export function UploadForm({
                         Удалить
                       </button>
                     ) : (
-                      <span className={styles.fileStatus}>Ожидает</span>
+                      <span className={styles.fileStatus}>Готов к загрузке</span>
                     )}
                   </li>
                 );
@@ -271,23 +274,23 @@ export function UploadForm({
 
             {status === "success" ? (
               <div className={styles.success} role="status">
-                <span aria-hidden="true">OK</span>
+                <span aria-hidden="true" />
                 <div>
-                  <strong>Документ загружен</strong>
+                  <strong>Файл загружен</strong>
                   <p>{formatPageCount(totalPages)}</p>
                 </div>
                 <Link
                   className={styles.primaryButton}
-                  href={`${routes.points}?documentId=${encodeURIComponent(resultsByFile[fileKey(files[0])].id)}`}
+                  href={routes.configure(resultsByFile[fileKey(files[0])].id)}
                 >
-                  Выбрать точку
+                  Настроить печать
                 </Link>
               </div>
             ) : null}
 
             {status !== "success" ? (
               <div className={styles.queueFooter}>
-                <p>Отправка начнётся только после подтверждения.</p>
+                <p>Проверьте, что выбрали нужный файл.</p>
                 <button
                   className={styles.primaryButton}
                   type="button"

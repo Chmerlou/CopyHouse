@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { routeForUser } from "@/shared/auth/contracts";
 import { getCurrentUser } from "@/shared/auth/server";
 import { routes } from "@/shared/routes";
 import { OrderView } from "./order-view";
@@ -19,12 +20,12 @@ async function ProtectedOrder({ params }: { params: Promise<{ orderId: string }>
   const [user, { orderId }] = await Promise.all([getCurrentUser(), params]);
   const returnTo = routes.order(orderId);
   if (!user) redirect(`${routes.login}?returnTo=${encodeURIComponent(returnTo)}`);
-  if (user.role !== "CLIENT") redirect(routes.provider);
+  if (user.role !== "CLIENT") redirect(routeForUser(user));
   return (
     <main id="main-content" tabIndex={-1} className={styles.page}>
       <div className={styles.shell}>
         <div className={styles.layout}>
-          <OrderView orderId={orderId} />
+          <OrderView key={orderId} orderId={orderId} />
           <PixelSprite kind="printer" className={styles.scene} />
         </div>
       </div>

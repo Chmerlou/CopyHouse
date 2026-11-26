@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { routeForUser } from "@/shared/auth/contracts";
 import { getCurrentUser } from "@/shared/auth/server";
 import { routes } from "@/shared/routes";
 import { ConfigureForm } from "./configure-form";
@@ -20,16 +21,16 @@ async function ProtectedConfigurePage({ params }: { params: Promise<{ documentId
   const [user, { documentId }] = await Promise.all([getCurrentUser(), params]);
   const returnTo = routes.configure(documentId);
   if (!user) redirect(`${routes.login}?returnTo=${encodeURIComponent(returnTo)}`);
-  if (user.role !== "CLIENT") redirect(routes.provider);
+  if (user.role !== "CLIENT") redirect(routeForUser(user));
 
   return (
     <main id="main-content" tabIndex={-1} className={styles.page}>
       <div className={styles.shell}>
         <div className="work-toolbar">
-          <Link className={styles.backLink} href={`${routes.points}?documentId=${encodeURIComponent(documentId)}`}>
-            Назад к точкам печати
+          <Link className={styles.backLink} href={routes.upload}>
+            Назад к загрузке
           </Link>
-          <p className="work-step">Шаг 3 из 4</p>
+          <p className="work-step">Шаг 2 из 4</p>
         </div>
         <ConfigureForm documentId={documentId} />
       </div>

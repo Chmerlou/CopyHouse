@@ -5,11 +5,9 @@ export const SELECTED_PRINT_POINT_KEY = "copyhouse.selectedPrintPointId";
 const PRINT_SETTINGS_KEY = "copyhouse.printSettings";
 
 export type PendingDocument = ApiSchema<"Document">;
+export type PrintOptions = ApiSchema<"QuoteRequest">;
 
-export type StoredPrintSettings = {
-  documentId: string;
-  colorMode: ApiSchema<"ColorMode">;
-  copies: number;
+export type StoredPrintSettings = PrintOptions & {
   quoteId: string;
   printPointId: string;
   printPointName: string;
@@ -44,20 +42,37 @@ export function readPendingDocuments(): PendingDocument[] {
   ));
 }
 
-function readAllPrintSettings(): Record<string, StoredPrintSettings> {
+function readAllPrintSettings(): Record<string, StoredPrintSettings | PrintOptions> {
   const value = readStorage(PRINT_SETTINGS_KEY);
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, StoredPrintSettings>
+    ? value as Record<string, StoredPrintSettings | PrintOptions>
     : {};
 }
 
-export function savePrintSettings(settings: StoredPrintSettings) {
+function saveDraft(settings: StoredPrintSettings | PrintOptions) {
   sessionStorage.setItem(PRINT_SETTINGS_KEY, JSON.stringify({
     ...readAllPrintSettings(),
     [settings.documentId]: settings,
   }));
 }
 
+export function savePrintOptions({ documentId, colorMode, copies }: PrintOptions) {
+  saveDraft({ documentId, colorMode, copies });
+}
+
+export function savePrintSettings(settings: StoredPrintSettings) {
+  saveDraft(settings);
+}
+
+export function readPrintOptions(documentId: string): PrintOptions | null {
+  const settings = readAllPrintSettings()[documentId];
+  if (!settings || settings.documentId !== documentId
+    || (settings.colorMode !== "BW" && settings.colorMode !== "COLOR")
+    || !Number.isInteger(settings.copies) || settings.copies < 1 || settings.copies > 100) return null;
+  return { documentId, colorMode: settings.colorMode, copies: settings.copies };
+}
+
 export function readPrintSettings(documentId: string) {
-  return readAllPrintSettings()[documentId] ?? null;
+  const settings = readAllPrintSettings()[documentId];
+  return settings && "quoteId" in settings && settings.quoteId ? settings : null;
 }

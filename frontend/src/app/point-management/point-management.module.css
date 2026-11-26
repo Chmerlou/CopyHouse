@@ -1,0 +1,122 @@
+.page {
+  min-height: calc(100dvh - var(--site-header-height));
+  padding: 44px 24px 72px;
+  background: var(--paper);
+}
+
+.shell { width: min(100%, 960px); margin-inline: auto; }
+
+.pageHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px dashed var(--color-faint);
+}
+
+.pageHeading h1 {
+  margin: 0;
+  color: var(--color-heading);
+  font-size: 42px;
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  line-height: 1.07;
+}
+
+.pageHeading p { margin: 12px 0 0; color: var(--color-body); line-height: 1.5; }
+.scene { flex: none; width: 88px; height: auto; margin-inline: 12px; }
+
+.sectionHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 14px;
+}
+
+.sectionHeading h2 { margin: 0; font-size: 22px; font-weight: 800; line-height: 1.2; }
+.sectionHeading p, .loading { margin: 0; color: var(--color-body); font-size: 14px; }
+
+.list { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.panel {
+  min-width: 0;
+  padding: 20px;
+  border: 2px solid var(--ink);
+  background: var(--color-raised);
+  box-shadow: var(--pixel-shadow);
+  overflow-wrap: anywhere;
+}
+
+.panel h3 { margin: 0; font-size: 19px; font-weight: 800; line-height: 1.25; }
+.panel p { margin: 4px 0 0; color: var(--color-body); line-height: 1.45; }
+.pointRow { display: grid; grid-template-columns: minmax(0, 1fr) 212px 164px; gap: 16px 24px; }
+.pointIdentity { min-width: 0; }
+.pointSide { display: grid; justify-items: start; align-content: start; gap: 10px; }
+.rowAction { align-self: center; }
+
+.rates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+}
+
+.rates > div { padding: 6px 12px; background: var(--color-panel); }
+.rates dt { color: var(--color-body); font-size: 13px; }
+.rates dd { margin: 2px 0 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid var(--ink);
+  background: var(--color-panel);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.status[data-tone="PENDING"] { background: #fff1c8; }
+.status[data-tone="APPROVED"] { background: #eff5da; }
+.status[data-tone="REJECTED"] { background: #fbe6e3; }
+
+.editor { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--color-faint); }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 460px; margin-top: 14px; }
+.priceInput { font-size: 16px; font-variant-numeric: tabular-nums; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.actions button, .rowAction button { min-height: 44px; font-size: 14px; }
+.actions button:disabled:not([aria-busy="true"]) { cursor: default; }
+
+.feedback p:empty, .editor p:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+.feedback .success, .feedback .error, .editor .success {
+  margin: 0 0 14px;
+  border: 1px solid var(--color-edge);
+  padding: 10px 12px;
+  background: #eff5da;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.editor .success { margin: 12px 0 0; }
+.feedback .error { background: #fbe6e3; color: var(--color-danger); }
+.editor .inlineError { margin-top: 10px; color: var(--color-danger); }
+
+.pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 16px; margin-top: 16px; font-size: 14px; }
+.pagination a, .textLink { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: 3px; }
+
+@media (max-width: 640px) {
+  .page { padding: 28px 16px 52px; }
+  .pageHeading { gap: 12px; margin-bottom: 20px; padding-bottom: 16px; }
+  .pageHeading h1 { font-size: 30px; }
+  .pageHeading p { margin-top: 8px; }
+  .scene { width: 54px; margin-inline: 0; }
+  .panel { padding: 14px; }
+  .pointRow, .fields { grid-template-columns: minmax(0, 1fr); }
+  .pointRow { gap: 12px; }
+  .actions > button, .rowAction > button { width: 100%; }
+}

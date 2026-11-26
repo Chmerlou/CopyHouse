@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
+import { routeForUser } from "@/shared/auth/contracts";
 import { getCurrentUser } from "@/shared/auth/server";
 import { routes } from "@/shared/routes";
 import { CheckoutForm } from "./checkout-form";
@@ -21,12 +22,12 @@ async function ProtectedCheckout({ params }: { params: Promise<{ documentId: str
   const [user, { documentId }] = await Promise.all([getCurrentUser(), params]);
   const returnTo = routes.checkout(documentId);
   if (!user) redirect(`${routes.login}?returnTo=${encodeURIComponent(returnTo)}`);
-  if (user.role !== "CLIENT") redirect(routes.provider);
+  if (user.role !== "CLIENT") redirect(routeForUser(user));
   return (
     <main id="main-content" tabIndex={-1} className={styles.page}>
       <div className={styles.shell}>
         <div className="work-toolbar">
-          <Link className={styles.back} href={routes.configure(documentId)}>Назад к настройке</Link>
+          <Link className={styles.back} href={routes.orderPoints(documentId)}>Назад к выбору точки</Link>
           <p className="work-step">Шаг 4 из 4</p>
         </div>
         <div className={styles.layout}>

@@ -199,18 +199,56 @@
 }
 
 .selectionStatus {
-  margin: 16px 0 0;
+  min-width: 0;
   color: var(--color-body);
   font-size: 13px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.offerTotal {
+  display: grid;
+  gap: 4px;
+  font-size: 20px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.offerTotal small {
+  color: var(--color-body);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.orderContext {
+  color: var(--color-body);
+  font-size: 14px;
+  margin: 16px 0 0;
 }
 
 .continueAction {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   margin-top: 20px;
   border-top: 1px solid var(--color-edge);
-  padding-top: 20px;
+  padding: 14px 0;
+  background: var(--color-canvas);
+}
+
+.stickyAction {
+  position: sticky;
+  z-index: 1;
+  bottom: 0;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
+}
+
+.state a {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--color-sky);
+  text-decoration: underline;
 }
 
 .continueAction a {
@@ -393,6 +431,7 @@
 
   .catalogAction a { width: 100%; }
 
+  .continueAction { align-items: stretch; flex-direction: column; gap: 8px; }
   .continueAction a { width: 100%; }
 }
 
@@ -408,4 +447,11 @@
   .skeletonList span {
     animation: none;
   }
+}
+.cityForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 24px;
 }

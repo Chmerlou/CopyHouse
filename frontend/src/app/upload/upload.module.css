@@ -319,10 +319,15 @@
   place-items: center;
   border-radius: 6px;
   background: #549f4b;
-  color: #fbfbf8;
-  font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 9px;
-  font-weight: 700;
+}
+
+.success > span::before {
+  width: 7px;
+  height: 13px;
+  border: solid #fbfbf8;
+  border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(42deg);
+  content: "";
 }
 
 .success strong,
