@@ -27,7 +27,7 @@ class DocumentsController {
 
   @Post()
   @Roles('CLIENT')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_PDF_BYTES } }))
+  @UseInterceptors(FileInterceptor('file', { defParamCharset: 'utf8', limits: { fileSize: MAX_PDF_BYTES } }))
   upload(request, file) {
     return this.documents.upload(request.user, file);
   }

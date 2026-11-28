@@ -7,7 +7,8 @@ const { parseDate, parseSort } = require('../common/list-query');
 const { pageResult, parseLimit, parsePage } = require('../common/pagination');
 const { toOrderPoint } = require('../orders/orders.service');
 
-const VISIBLE = ['PAID', 'PRINTING', 'READY', 'ISSUED', 'CANCELLED'];
+const QUEUES = { active: ['PAID', 'PRINTING', 'READY'], completed: ['ISSUED', 'CANCELLED'] };
+const VISIBLE = [...QUEUES.active, ...QUEUES.completed];
 
 @Injectable()
 class PointOrdersService {
@@ -22,9 +23,14 @@ class PointOrdersService {
     const createdFrom = parseDate(query && query.createdFrom, 'createdFrom');
     const createdTo = parseDate(query && query.createdTo, 'createdTo');
     const sortOrder = parseSort(query);
+    const queue = query?.queue;
+    if (queue !== undefined && (typeof queue !== 'string' || !Object.hasOwn(QUEUES, queue))) {
+      throw apiError('VALIDATION_ERROR', { details: [{ field: 'queue', message: 'Неизвестная очередь заказов' }] });
+    }
+    const statuses = queue === undefined ? VISIBLE : QUEUES[queue].filter((item) => !status || item === status);
     const where = {
       printPoint: { ownerId: user.id },
-      status: status || { in: VISIBLE },
+      status: status && queue === undefined ? status : { in: statuses },
     };
     if (createdFrom || createdTo) {
       where.createdAt = {};
@@ -54,11 +60,7 @@ class PointOrdersService {
   async start(user, orderId) {
     const order = await this.ownOrder(user, orderId);
     if (order.status !== 'PAID') throw apiError('INVALID_STATUS_TRANSITION');
-    const updated = await this.prisma.order.update({
-      where: { id: order.id },
-      data: { status: 'PRINTING' },
-      include: pointInclude,
-    });
+    const updated = await transition(this.prisma, { id: order.id, status: 'PAID' }, { status: 'PRINTING' });
     return toOrderPoint(updated);
   }
 
@@ -78,11 +80,8 @@ class PointOrdersService {
       throw apiError('VALIDATION_ERROR', { message: 'Код выдачи должен состоять из 6 цифр' });
     }
     if (code !== order.pickupCode) throw apiError('INVALID_PICKUP_CODE');
-    const updated = await this.prisma.order.update({
-      where: { id: order.id },
-      data: { status: 'ISSUED' },
-      include: pointInclude,
-    });
+    const updated = await transition(this.prisma, { id: order.id, status: 'READY', pickupCode: code },
+      { status: 'ISSUED' }, 'ORDER_ALREADY_ISSUED');
     return toOrderPoint(updated);
   }
 
@@ -98,17 +97,15 @@ class PointOrdersService {
       throw apiError('ORDER_NOT_CANCELLABLE');
     }
     const updated = await this.prisma.$transaction(async (tx) => {
-      if (order.payment && order.payment.status === 'SUCCEEDED') {
-        await tx.payment.update({
-          where: { id: order.payment.id },
+      const cancelled = await transition(tx, { id: order.id, status: order.status },
+        { status: 'CANCELLED', cancelReason: reason }, 'ORDER_NOT_CANCELLABLE');
+      if (order.payment) {
+        await tx.payment.updateMany({
+          where: { id: order.payment.id, status: 'SUCCEEDED' },
           data: { status: 'REFUNDED' },
         });
       }
-      return tx.order.update({
-        where: { id: order.id },
-        data: { status: 'CANCELLED', cancelReason: reason },
-        include: pointInclude,
-      });
+      return cancelled;
     });
     return toOrderPoint(updated);
   }
@@ -131,16 +128,17 @@ class PointOrdersService {
     if (!order.printPoint || order.printPoint.ownerId !== user.id) {
       throw apiError('ORDER_NOT_IN_POINT');
     }
+    if (order.status === 'CREATED') {
+      throw apiError('NOT_FOUND');
+    }
     return order;
   }
 
   async assignCode(orderId) {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
-        return await this.prisma.order.update({
-          where: { id: orderId },
-          data: { status: 'READY', pickupCode: String(randomInt(0, 1000000)).padStart(6, '0') },
-          include: pointInclude,
+        return await transition(this.prisma, { id: orderId, status: 'PRINTING' }, {
+          status: 'READY', pickupCode: String(randomInt(0, 1000000)).padStart(6, '0'),
         });
       } catch (error) {
         if (!error || error.code !== 'P2002') throw error;
@@ -152,9 +150,17 @@ class PointOrdersService {
 
 const pointInclude = { printPoint: true, document: true, payment: true };
 
+async function transition(db, where, data, conflict = 'INVALID_STATUS_TRANSITION') {
+  try {
+    return await db.order.update({ where, data, include: pointInclude });
+  } catch (error) {
+    if (error?.code === 'P2025') throw apiError(conflict);
+    throw error;
+  }
+}
+
 function parseVisibleStatus(value) {
   if (value === undefined || value === null || value === '') return '';
-  if (value === 'CREATED') return 'CREATED';
   if (!VISIBLE.includes(value)) {
     throw apiError('VALIDATION_ERROR', {
       details: [{ field: 'status', message: 'Неизвестный статус заказа' }],

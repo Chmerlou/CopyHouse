@@ -6,6 +6,7 @@ const { isUuid } = require('../common/ids');
 const { parseDate, parseSort } = require('../common/list-query');
 const { pageResult, parseLimit, parsePage } = require('../common/pagination');
 const { normalizeCity } = require('../common/user-input');
+const { documentName } = require('../documents/filename');
 const { calculatePrice, rateFor } = require('../pricing/price');
 
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -350,10 +351,11 @@ function toOrderClient(order) {
       name: order.printPoint.name,
       city: order.printPoint.city,
       address: order.printPoint.address,
+      workingHours: order.printPoint.workingHours,
     },
     document: {
       id: order.document.id,
-      originalName: order.document.originalName,
+      originalName: documentName(order.document.originalName),
       pageCount: order.document.pageCount,
     },
     colorMode: order.colorMode,

@@ -6,6 +6,7 @@ const { PrismaService } = require('../prisma/prisma.service');
 const { apiError } = require('../common/api-error');
 const { looksLikePdf, countPdfPages } = require('./pdf');
 const { fileAccess, qualifyingOrderWhere } = require('./access');
+const { documentName } = require('./filename');
 
 @Injectable()
 class DocumentsService {
@@ -85,7 +86,7 @@ class DocumentsService {
 
     return {
       absolutePath: this.absolutePath(document.storageKey),
-      originalName: document.originalName,
+      originalName: documentName(document.originalName),
     };
   }
 
@@ -111,7 +112,7 @@ Inject(PrismaService)(DocumentsService, undefined, 0);
 function toDocument(document) {
   return {
     id: document.id,
-    originalName: document.originalName,
+    originalName: documentName(document.originalName),
     sizeBytes: document.sizeBytes,
     pageCount: document.pageCount,
     createdAt: document.createdAt.toISOString(),

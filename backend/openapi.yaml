@@ -10,7 +10,7 @@ info:
     Учётка `ADMIN` появляется сидом, отдельного эндпоинта регистрации администратора нет.
 
     Карты нет. Каталог — список адресов одного города и их цен.
-    Гость открывает `GET /print-points` без токена и передаёт город в query `city`.
+    Гость открывает `GET /print-points` без токена и может указать город в query `city`.
     Запрос с действующим токеном берёт город из профиля и query `city` не читает.
     Расчёт по-прежнему берёт город из профиля. Пользователь из Калуги видит только точки Калуги.
     Город профиля можно сменить. Уже созданные заказы от этого не меняются.
@@ -371,15 +371,15 @@ paths:
       summary: Каталог точек и цен
       security: []
       description: |
-        Токен не обязателен. Гость передаёт `city`.
+        Токен не обязателен. Гость может указать `city`. Без `city` доступен каталог всех городов.
         Если заголовок `Authorization` есть и токен действующий, город берётся из профиля,
         а query `city` игнорируется.
         Нет заголовка — гостевой режим. Заголовок с просроченным, поддельным или отозванным
         токеном даёт `401`, а не гостевой каталог.
-        В списке только точки выбранного города со статусом `APPROVED`, `isActive = true`
-        и обеими ставками больше нуля. Другие города в ответ не попадают.
+        В списке только точки со статусом `APPROVED`, `isActive = true` и обеими ставками больше нуля.
+        Если город выбран или взят из профиля, видны только его точки.
         Сравнение города без учёта регистра и пробелов по краям.
-        `q` ищет по названию и адресу уже внутри этого города.
+        `q` ищет по названию и адресу в доступном списке.
         Если точек нет, `items` пустой.
       parameters:
         - $ref: "#/components/parameters/CatalogCity"
@@ -388,7 +388,7 @@ paths:
         - $ref: "#/components/parameters/SearchQuery"
       responses:
         "200":
-          description: Страница каталога выбранного города. items может быть пустым.
+          description: Страница каталога. items может быть пустым.
           content:
             application/json:
               schema:
@@ -832,11 +832,22 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
-        - $ref: "#/components/parameters/OrderStatusFilter"
+        - name: status
+          in: query
+          description: Статус оплаченного заказа; CREATED недоступен точке.
+          schema:
+            type: string
+            enum: [PAID, PRINTING, READY, ISSUED, CANCELLED]
         - $ref: "#/components/parameters/CreatedFrom"
         - $ref: "#/components/parameters/CreatedTo"
         - $ref: "#/components/parameters/SortBy"
         - $ref: "#/components/parameters/SortOrder"
+        - name: queue
+          in: query
+          description: Активные или завершённые заказы. Можно сочетать с фильтром status.
+          schema:
+            type: string
+            enum: [active, completed]
         - name: printPointId
           in: query
           required: false
@@ -849,6 +860,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderPointList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1260,7 +1273,7 @@ components:
       required: false
       description: |
         Город каталога для гостя. В запросе с действующим токеном не используется:
-        город берётся из профиля. Без токена поле обязательно.
+        город берётся из профиля. Для гостя без фильтра видны точки всех городов.
       schema:
         $ref: "#/components/schemas/City"
     CityFilter:
@@ -2226,6 +2239,9 @@ components:
               $ref: "#/components/schemas/City"
             address:
               type: string
+            workingHours:
+              type: string
+              description: Текущие часы работы точки печати.
         document:
           type: object
           required: [id, originalName, pageCount]
@@ -2308,6 +2324,9 @@ components:
               $ref: "#/components/schemas/City"
             address:
               type: string
+            workingHours:
+              type: string
+              description: Текущие часы работы точки печати.
         document:
           type: object
           required: [id, originalName, pageCount]

@@ -23,7 +23,7 @@ class PrintPointsService {
       isActive: true,
       pricePerPageBw: { gt: 0 },
       pricePerPageColor: { gt: 0 },
-      city: { equals: city, mode: 'insensitive' },
+      ...(city === null ? {} : { city: { equals: city, mode: 'insensitive' } }),
     };
     if (search) {
       where.OR = [
@@ -133,7 +133,8 @@ function catalogCity(user, query) {
   if (user) {
     return normalizeCity(user.city);
   }
-  const city = normalizeCity(query && query.city);
+  if (query?.city === undefined) return null;
+  const city = normalizeCity(query.city);
   if (!isValidCity(city)) {
     throw apiError('VALIDATION_ERROR', {
       details: [{ field: 'city', message: 'Укажите город' }],

@@ -25,13 +25,13 @@ describe('PrintPointsService catalog', () => {
     return { service: new PrintPointsService(prisma), prisma };
   }
 
-  it('requires a city from a guest and does not read the database', async () => {
+  it('lists approved public points across cities when a guest supplies no filter', async () => {
     const { service, prisma } = createService();
 
-    await expect(service.listCatalog(null, {})).rejects.toMatchObject({
-      response: { code: 'VALIDATION_ERROR', statusCode: 400 },
-    });
-    expect(prisma.printPoint.findMany).not.toHaveBeenCalled();
+    await expect(service.listCatalog(null, {})).resolves.toMatchObject({ items: [{ id: POINT.id }] });
+    expect(prisma.printPoint.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      status: 'APPROVED', isActive: true, pricePerPageBw: { gt: 0 }, pricePerPageColor: { gt: 0 },
+    } }));
   });
 
   it('returns public prices for a guest city and hides moderation fields', async () => {

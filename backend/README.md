@@ -1,6 +1,6 @@
 # CopyHouse
 
-Веб-платформа-агрегатор печати. Бэкенд на NestJS и JavaScript. Сейчас работают проверка живости, регистрация, вход и загрузка PDF. Контракт остальных ручек зафиксирован в `openapi.yaml` и открывается в Swagger.
+Веб-платформа-агрегатор печати. Бэкенд на NestJS и JavaScript. Доступны регистрация, загрузка PDF, каталог точек, расчёт, заказ, тестовая оплата и выдача. Контракт находится в `openapi.yaml` и открывается в Swagger.
 
 Исходники лежат в `backend/src` и написаны на JavaScript. При сборке Nest прогоняет их через компилятор: декораторы вроде `@Controller` и `@Get` сам Node не понимает. TypeScript писать не нужно.
 
@@ -39,14 +39,14 @@ API: http://localhost:3000/api/health
 - `POST /api/auth/login` — возвращает JWT на 7 дней. В токене версия сессии
 - `POST /api/auth/logout` — отзывает все токены этого пользователя, в том числе на других устройствах
 - `GET /api/auth/me` и `PATCH /api/auth/me` — профиль и город
-- `GET /api/print-points?city=Калуга` — каталог и цены без токена. С токеном город берётся из профиля
+- `GET /api/print-points` — публичный каталог и цены. Гость может указать `?city=Калуга`. С токеном город берётся из профиля
 - `POST /api/documents` — PDF до 50 МБ, в ответе число страниц
 - `POST /api/quotes` — расчёт на 15 минут: страницы × копии × ставка выбранного режима. Только `CLIENT`
 - `POST /api/orders` — заказ со снимком цены. Заголовок `Idempotency-Key` обязателен. Повтор того же ключа возвращает прежний заказ
 - `GET /api/orders` и `GET /api/orders/{id}` — история и один заказ клиента
 - `POST /api/orders/{id}/pay` — тестовая оплата `SUCCESS` или `FAILURE`
 - `POST /api/orders/{id}/cancel` — клиент отменяет только неоплаченный заказ
-- `GET /api/point/orders` и действия `start`, `ready`, `issue`, `cancel` — кабинет точки
+- `GET /api/point/orders` и действия `start`, `ready`, `issue`, `cancel` — кабинет точки. Фильтр `queue=active|completed` выбирает очередь
 - `POST /api/print-points`, `GET /api/print-points/mine`, правка заявки и тарифов
 - `POST /api/admin/print-points/{id}/approve`, `reject` и выключение точки — только `ADMIN`
 - `GET /api/documents/{id}` и `GET /api/documents/{id}/file` — свои метаданные и скачивание
@@ -66,7 +66,7 @@ docker compose up postgres -d
 Дальше в `backend/`:
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 npm ci
 npx prisma migrate dev
 npx prisma db seed
