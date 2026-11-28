@@ -1,12 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --paper: #f7f5ee;
-  --ink: #13151a;
-  --ink-muted: #42454d;
-  --sky: #1979df;
+  --color-canvas: #f5f5f2;
+  --color-ink: #171717;
+  --color-heading: #222227;
+  --color-body: #53565c;
+  --color-faint: #5c6068;
+  --color-edge: #cfd2d5;
+  --color-panel: #edf1f5;
+  --color-raised: #fbfbf8;
+  --color-sky: #1a6fd1;
+  --color-accent: #d6fa31;
+  --color-danger: #a62f2f;
+  --paper: var(--color-canvas);
+  --ink: var(--color-ink);
+  --ink-muted: var(--color-body);
+  --sky: var(--color-sky);
   --sky-deep: #135eb5;
-  --accent: #d6fa31;
+  --accent: var(--color-accent);
+  --accent-hover: #e4ff76;
+  --pixel-shadow: 3px 3px 0 var(--ink);
+  --site-header-height: 81px;
   --focus: #ffe14f;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --background: var(--paper);
@@ -39,6 +53,72 @@ body {
 a {
   color: inherit;
 }
+
+button, input, select, textarea, input::file-selector-button {
+  border-radius: 0;
+}
+
+input[type="radio"] {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  padding: 3px;
+  border: 1px solid var(--color-faint);
+  background-color: var(--color-raised);
+}
+
+input[type="radio"]:checked {
+  border-color: var(--sky-deep);
+  background-color: var(--sky-deep);
+  background-clip: content-box;
+}
+
+@media (forced-colors: active) {
+  input[type="radio"] {
+    forced-color-adjust: none;
+    border-color: ButtonText;
+    background-color: Canvas;
+  }
+
+  input[type="radio"]:checked {
+    border-color: Highlight;
+    background-color: Highlight;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--sky-deep);
+  outline-offset: 3px;
+}
+
+header :focus-visible {
+  outline-color: var(--focus);
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
+::selection { background: var(--accent); color: var(--ink); }
+
+.work-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 24px;
+}
+
+.work-step {
+  width: fit-content;
+  margin: 0;
+  border: 1px solid var(--ink);
+  background: var(--color-raised);
+  padding: 4px 9px;
+  color: var(--ink);
+  font: 700 12px/1.5 ui-monospace, monospace;
+}
+
+.missing-page-copy { margin-top: 16px; }
 
 @media (prefers-reduced-motion: reduce) {
   html {

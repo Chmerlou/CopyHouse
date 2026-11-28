@@ -1,0 +1,2393 @@
+openapi: 3.0.3
+info:
+  title: CopyHouse API
+  version: 0.1.0
+  description: |
+    Контракт MVP CopyHouse: агрегатор печати PDF.
+
+    Роли: `CLIENT`, `PrintProvider`, `ADMIN`.
+    Публичная регистрация создаёт только `CLIENT` или `PrintProvider`.
+    Учётка `ADMIN` появляется сидом, отдельного эндпоинта регистрации администратора нет.
+
+    Карты нет. Каталог — список адресов одного города и их цен.
+    Гость открывает `GET /print-points` без токена и может указать город в query `city`.
+    Запрос с действующим токеном берёт город из профиля и query `city` не читает.
+    Расчёт по-прежнему берёт город из профиля. Пользователь из Калуги видит только точки Калуги.
+    Город профиля можно сменить. Уже созданные заказы от этого не меняются.
+    Один заказ — один PDF, один режим печати и одно число копий.
+    Деньги — целые копейки. Клиент платит цену печати.
+    Комиссия платформы удерживается из этой суммы и на старте равна 0
+    (`commissionBps = 0`), поэтому `total = subtotal`.
+
+    Один аккаунт `PrintProvider` — корпоративный владелец и может иметь несколько точек.
+    Точка в API называется `PrintPoint`.
+
+    Операции заказа разделены и не сводятся к одному изменению статуса:
+    расчёт (`POST /quotes`), создание (`POST /orders`), оплата (`POST /orders/{id}/pay`),
+    отмена клиентом (`POST /orders/{id}/cancel`), старт печати, готовность, выдача
+    и отмена точкой. Универсального `PATCH` статуса нет: следующий статус выбирает сервер.
+
+    Жизненный цикл точки. `isActive = true` допустим только вместе с `APPROVED`.
+
+    | status | isActive | В каталоге |
+    | --- | --- | --- |
+    | PENDING | false | Нет |
+    | PENDING | true | Запрещённая комбинация |
+    | APPROVED | false | Нет |
+    | APPROVED | true | Да |
+    | REJECTED | false | Нет |
+    | REJECTED | true | Запрещённая комбинация |
+
+    Новая точка всегда `PENDING` и `isActive = false`.
+    Владелец не может сам включить точку. Отклонённая точка не попадает в каталог,
+    пока админ снова её не одобрит. После одобрения владелец меняет только тарифы.
+    Выключение одобренной точки не отменяет уже созданные заказы.
+
+    Статусы заказа: `CREATED → PAID → PRINTING → READY → ISSUED`.
+    Дополнительно `CREATED → CANCELLED`, а из `PAID` и `PRINTING` — отмена точкой.
+    `READY` и `ISSUED` не отменяются. `ISSUED` и `CANCELLED` конечные.
+    Возврат — это `Payment.status = REFUNDED`, а не статус заказа.
+    Смена платежа и заказа в одной операции выполняется одной транзакцией PostgreSQL.
+
+    Расчёт живёт 15 минут. Заказ создаётся по `quoteId` и выбранной точке.
+    Сервер заново считает цену и сверяет её с расчётом. В заказ пишется снимок:
+    страницы, копии, цена страницы, комиссия, итог и валюта `RUB`.
+    PDF в базе не хранится: в PostgreSQL только метаданные, файл — на диске в разработке
+    и в S3-совместимом хранилище в production. Ключ хранилища клиенту не отдаётся.
+
+    Списки возвращают `{ items, pagination }`. `limit` не больше 100.
+    Ключ идемпотентности уникален в паре с пользователем, живёт 24 часа
+    и относится только к `POST /orders`.
+
+    Access-токен живёт 7 дней, refresh-токена нет. В JWT записана версия сессии `tv`.
+    `POST /auth/logout` увеличивает её у пользователя и тем самым отзывает
+    все ранее выданные токены, в том числе на других устройствах.
+    Удалить токен только в браузере недостаточно: остальные копии действуют до срока или до этого вызова.
+
+    Коды HTTP: 200 чтение, 201 создание, 400 данные и разбор PDF, 401 нет аутентификации,
+    403 роль не та, 404 нет ресурса или он чужой, 409 конфликт состояния, 413 размер файла,
+    415 не PDF, 500 `INTERNAL_ERROR` без stack trace и без текста Prisma.
+
+    Ошибка — это JSON с полями `statusCode`, `code` и `message`.
+    Фронтенд ветвится по `code`. Текст `message` можно менять.
+    Полный список кодов, HTTP-статусов и текстов — схема `ErrorCode`.
+    Готовые тела лежат в `components.examples`, ответы операций на них ссылаются.
+
+    Этот файл — источник контракта. Prisma-схема повторяет его:
+    роли `CLIENT`, `PrintProvider` и `ADMIN`, точка со статусом модерации и владельцем,
+    расчёт, снимок заказа и ключ идемпотентности.
+
+servers:
+  - url: http://localhost:3000/api
+    description: Локальный API
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Documents
+  - name: PrintPoints
+  - name: Orders
+  - name: Point
+  - name: Admin
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Проверка живости сервиса
+      security: []
+      responses:
+        "200":
+          description: Сервис отвечает
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Регистрация клиента или владельца точки
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Учётная запись создана. Токен не выдаётся, нужен вход.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Некорректный email, слабый пароль или прочая ошибка полей
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidEmail:
+                  $ref: "#/components/examples/InvalidEmail"
+                weakPassword:
+                  $ref: "#/components/examples/WeakPassword"
+                validationError:
+                  $ref: "#/components/examples/ValidationError"
+        "409":
+          description: Email уже занят
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                emailAlreadyUsed:
+                  $ref: "#/components/examples/EmailAlreadyUsed"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Вход по email и паролю
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Выдан JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Некорректный формат email или пустой пароль
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidEmail:
+                  $ref: "#/components/examples/InvalidEmail"
+                validationError:
+                  $ref: "#/components/examples/ValidationError"
+        "401":
+          description: Неверная пара email и пароль. Один и тот же code для неизвестного email и неверного пароля.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidCredentials:
+                  $ref: "#/components/examples/InvalidCredentials"
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Выйти на всех устройствах
+      description: |
+        Нужен ещё действующий access-токен.
+        Сервер увеличивает версию сессии пользователя на 1.
+        Все JWT, выданные до этого вызова, получают `401 UNAUTHORIZED`,
+        включая токены на других устройствах. Новый вход выдаёт токен уже с новой версией.
+      responses:
+        "204":
+          description: Все сессии отозваны. Тела нет.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getMe
+      summary: Текущий пользователь
+      responses:
+        "200":
+          description: Профиль из токена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Auth]
+      operationId: updateMe
+      summary: Изменить город профиля
+      description: |
+        Меняется только `city`. Email и роль этим методом не меняются.
+        Новый город действует на следующий каталог и новый расчёт.
+        Текущие заказы и уже сохранённые расчёты остаются привязаны к прежнему городу.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCityRequest"
+      responses:
+        "200":
+          description: Профиль обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /documents:
+    post:
+      tags: [Documents]
+      operationId: uploadDocument
+      summary: Загрузить PDF и посчитать страницы
+      description: |
+        Только роль `CLIENT`. Обработка синхронная: в ответе уже есть `pageCount`.
+        Файл, который не удалось проверить, не сохраняется.
+        Лимит — 50 МиБ (`52428800` байт). Не-PDF отвечает `415`.
+        Повреждённый или пустой PDF отвечает `400` и не сохраняется.
+        В базе остаётся ключ хранилища, клиенту он не возвращается.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF-файл
+      responses:
+        "201":
+          description: Документ сохранён и посчитан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "400":
+          description: Повреждённый или пустой PDF
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidPdf:
+                  $ref: "#/components/examples/InvalidPdf"
+                emptyPdf:
+                  $ref: "#/components/examples/EmptyPdf"
+        "415":
+          description: Файл не PDF
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                unsupportedFileType:
+                  $ref: "#/components/examples/UnsupportedFileType"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          description: Файл больше 50 МиБ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                fileTooLarge:
+                  $ref: "#/components/examples/FileTooLarge"
+
+  /documents/{documentId}:
+    get:
+      tags: [Documents]
+      operationId: getDocument
+      summary: Метаданные своего документа
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      responses:
+        "200":
+          description: Документ текущего клиента
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/DocumentNotOwner"
+
+  /documents/{documentId}/file:
+    get:
+      tags: [Documents]
+      operationId: downloadDocument
+      summary: Скачать исходный PDF
+      description: |
+        Доступ к файлу:
+
+        | Кто | Правило |
+        | --- | --- |
+        | Владелец документа | Свой файл |
+        | Другой клиент | Нет, `DOCUMENT_NOT_OWNER` |
+        | PrintProvider | Только если документ входит в заказ его точки со статусом `PAID`, `PRINTING`, `READY`, `ISSUED` или `CANCELLED` после оплаты |
+        | Владелец другой точки | Нет, `DOCUMENT_NOT_AVAILABLE` |
+        | ADMIN | В MVP файл не скачивает |
+
+        Сервер проверяет цепочку заказ → точка → текущий владелец точки.
+        Роли `PrintProvider` самой по себе недостаточно.
+      parameters:
+        - $ref: "#/components/parameters/DocumentId"
+      responses:
+        "200":
+          description: PDF-файл
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: attachment с исходным именем файла
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/DocumentAccessError"
+
+  /print-points:
+    get:
+      tags: [PrintPoints]
+      operationId: listPrintPoints
+      summary: Каталог точек и цен
+      security: []
+      description: |
+        Токен не обязателен. Гость может указать `city`. Без `city` доступен каталог всех городов.
+        Если заголовок `Authorization` есть и токен действующий, город берётся из профиля,
+        а query `city` игнорируется.
+        Нет заголовка — гостевой режим. Заголовок с просроченным, поддельным или отозванным
+        токеном даёт `401`, а не гостевой каталог.
+        В списке только точки со статусом `APPROVED`, `isActive = true` и обеими ставками больше нуля.
+        Если город выбран или взят из профиля, видны только его точки.
+        Сравнение города без учёта регистра и пробелов по краям.
+        `q` ищет по названию и адресу в доступном списке.
+        Если точек нет, `items` пустой.
+      parameters:
+        - $ref: "#/components/parameters/CatalogCity"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/SearchQuery"
+      responses:
+        "200":
+          description: Страница каталога. items может быть пустым.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointPublicList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [PrintPoints]
+      operationId: createPrintPoint
+      summary: Подать точку на модерацию
+      description: |
+        Только роль `PrintProvider`. У владельца может быть несколько точек, каждая заявка отдельная.
+        Ставка комиссии проставляется сервером и в MVP равна 0.
+        Точка создаётся как `PENDING` и `isActive = false`. В каталог она не попадает.
+        Владелец не включает точку сам.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintPointWrite"
+      responses:
+        "201":
+          description: Заявка создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointOwner"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /print-points/mine:
+    get:
+      tags: [PrintPoints]
+      operationId: listMyPrintPoints
+      summary: Точки текущего владельца
+      description: Все точки аккаунта, включая ожидающие, отклонённые и выключенные. Пустая страница, если заявок ещё нет.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Страница своих точек
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointOwnerList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /print-points/{printPointId}:
+    get:
+      tags: [PrintPoints]
+      operationId: getMyPrintPoint
+      summary: Одна точка текущего владельца
+      parameters:
+        - $ref: "#/components/parameters/PrintPointId"
+      responses:
+        "200":
+          description: Точка принадлежит текущему владельцу
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointOwner"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/PrintPointAccessError"
+    patch:
+      tags: [PrintPoints]
+      operationId: updateMyPrintPoint
+      summary: Изменить название, город, адрес и часы до одобрения
+      description: |
+        Разрешено при статусе `PENDING` или `REJECTED`.
+        Успешное изменение из `REJECTED` переводит точку обратно в `PENDING`
+        и очищает причину отказа. Тарифы здесь тоже можно передать.
+        У одобренной точки эти поля не меняются: для ставок есть отдельный метод.
+      parameters:
+        - $ref: "#/components/parameters/PrintPointId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintPointWrite"
+      responses:
+        "200":
+          description: Заявка обновлена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointOwner"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/PrintPointAccessError"
+        "409":
+          description: Точка уже одобрена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                printPointAlreadyApproved:
+                  $ref: "#/components/examples/PrintPointAlreadyApproved"
+
+  /print-points/{printPointId}/prices:
+    patch:
+      tags: [PrintPoints]
+      operationId: updateMyPrintPointPrices
+      summary: Изменить тарифы точки
+      description: |
+        Только роль `PrintProvider` и только своя точка.
+        Разрешено в статусах `PENDING`, `REJECTED` и `APPROVED`.
+        Для `REJECTED` точка снова становится `PENDING`, причина отказа очищается.
+        Для `APPROVED` статус не меняется, модерация ставки не нужна.
+        Новые цены сразу попадают в каталог и расчёт, если точка активна.
+        Заказы, уже сохранённые со старой ценой, не пересчитываются.
+      parameters:
+        - $ref: "#/components/parameters/PrintPointId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintPointPrices"
+      responses:
+        "200":
+          description: Тарифы обновлены
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointOwner"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/PrintPointAccessError"
+
+  /quotes:
+    post:
+      tags: [Orders]
+      operationId: createQuote
+      summary: Посчитать стоимость по всем доступным точкам
+      description: |
+        Только `CLIENT`. Документ должен принадлежать текущему пользователю.
+        В расчёт входят только доступные точки города из профиля. Точки других городов не попадают в offers.
+        Для каждой такой точки:
+
+        `total = pageCount × copies × pricePerPage`
+
+        `pricePerPage` берётся из ставки выбранного режима.
+        Точка без положительной ставки этого режима в список не входит.
+        Расчёт сохраняется на 15 минут и получает `id` и `expiresAt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuoteRequest"
+            example:
+              documentId: 6d1f0c3e-8b2a-4f1e-9c0d-112233445566
+              colorMode: BW
+              copies: 2
+      responses:
+        "201":
+          description: Расчёт сохранён. Массив offers может быть пустым.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quote"
+              example:
+                id: 11111111-2222-4333-8444-555555555555
+                expiresAt: "2026-11-22T09:00:00Z"
+                documentId: 6d1f0c3e-8b2a-4f1e-9c0d-112233445566
+                city: Калуга
+                pageCount: 10
+                colorMode: BW
+                copies: 2
+                offers:
+                  - printPointId: 9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d
+                    name: Копирка на Кирова
+                    city: Калуга
+                    address: Калуга, ул. Кирова, 20
+                    workingHours: ежедневно 09:00–21:00
+                    pricePerPage: 500
+                    total: 10000
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/DocumentNotOwner"
+
+  /orders:
+    get:
+      tags: [Orders]
+      operationId: listMyOrders
+      summary: История заказов клиента
+      description: |
+        Только заказы текущего `CLIENT`.
+        Без фильтра статуса видны все, включая `CANCELLED`.
+        По умолчанию новые сверху.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/OrderStatusFilter"
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/SortBy"
+        - $ref: "#/components/parameters/SortOrder"
+      responses:
+        "200":
+          description: Страница заказов
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderClientList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Orders]
+      operationId: createOrder
+      summary: Оформить заказ
+      description: |
+        Только `CLIENT`. Тело — `quoteId` и `printPointId` из этого расчёта.
+        Заголовок `Idempotency-Key` обязателен. Область ключа — пара пользователь + ключ,
+        срок 24 часа, только этот метод.
+        Запись идемпотентности создаётся до заказа. Уникальный индекс не даёт
+        двум параллельным запросам создать два заказа. Пока первый запрос не закончен,
+        повтор получает `IDEMPOTENCY_IN_PROGRESS`. Тот же ключ и то же тело после успеха
+        возвращают сохранённый заказ. Тот же ключ и другое тело — `IDEMPOTENCY_KEY_MISMATCH`.
+        Сервер заново считает цену. Если она не совпала с предложением расчёта — `PRICE_CHANGED`.
+        Просроченный расчёт — `QUOTE_EXPIRED`.
+        Если после расчёта пользователь сменил город, заказ не создаётся: `CITY_CHANGED`.
+        Точка должна быть `APPROVED` и активной.
+        В заказ пишется снимок цены. Статус — `CREATED`. Платёж ещё не создаётся.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "201":
+          description: Заказ создан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderClient"
+        "200":
+          description: Повтор идемпотентного запроса, возвращён прежний заказ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderClient"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Расчёт или точка не найдены, либо расчёт чужой
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                quoteNotFound:
+                  $ref: "#/components/examples/QuoteNotFound"
+                quoteNotOwner:
+                  $ref: "#/components/examples/QuoteNotOwner"
+                printPointNotFound:
+                  $ref: "#/components/examples/PrintPointNotFound"
+        "409":
+          description: Расчёт нельзя использовать, точка недоступна или ключ идемпотентности конфликтует
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                quoteExpired:
+                  $ref: "#/components/examples/QuoteExpired"
+                cityChanged:
+                  $ref: "#/components/examples/CityChanged"
+                priceChanged:
+                  $ref: "#/components/examples/PriceChanged"
+                quotePointMismatch:
+                  $ref: "#/components/examples/QuotePointMismatch"
+                printPointNotApproved:
+                  $ref: "#/components/examples/PrintPointNotApproved"
+                printPointInactive:
+                  $ref: "#/components/examples/PrintPointInactive"
+                tariffMissing:
+                  $ref: "#/components/examples/TariffMissing"
+                idempotencyKeyMismatch:
+                  $ref: "#/components/examples/IdempotencyKeyMismatch"
+                idempotencyInProgress:
+                  $ref: "#/components/examples/IdempotencyInProgress"
+
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      operationId: getMyOrder
+      summary: Заказ клиента
+      description: |
+        Чужой заказ отвечает `404` с кодом `ORDER_NOT_OWNER`.
+        Несуществующий идентификатор — `NOT_FOUND`.
+        `pickupCode` заполнен только в статусах `READY` и `ISSUED`.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Заказ текущего клиента
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderClient"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/OrderNotOwner"
+
+  /orders/{orderId}/pay:
+    post:
+      tags: [Orders]
+      operationId: payOrder
+      summary: Тестовая оплата
+      description: |
+        Денежного списания нет. Провайдер — `MOCK`. Сумма равна `order.total`.
+        Внутри одной транзакции сервер создаёт или обновляет единственный `Payment` со статусом `PENDING`,
+        выполняет mock и затем либо ставит платёж `SUCCEEDED` и заказ `PAID`,
+        либо платёж `FAILED` и оставляет заказ `CREATED`.
+        Неуспешную попытку можно повторить. Повторный `SUCCESS` для уже оплаченного заказа
+        возвращает тот же заказ и второй платёж не создаёт.
+        `FAILURE` после успешной оплаты не откатывает заказ.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayRequest"
+      responses:
+        "200":
+          description: Результат зафиксирован. При SUCCESS статус заказа — PAID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderClient"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/OrderNotOwner"
+        "409":
+          description: Заказ нельзя оплатить или повторный FAILURE после успешной оплаты
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                orderNotPayable:
+                  $ref: "#/components/examples/OrderNotPayable"
+                paymentAlreadySucceeded:
+                  $ref: "#/components/examples/PaymentAlreadySucceeded"
+
+  /orders/{orderId}/cancel:
+    post:
+      tags: [Orders]
+      operationId: cancelMyOrder
+      summary: Отменить неоплаченный заказ
+      description: |
+        Только владелец заказа и только из `CREATED`.
+        Заказ становится `CANCELLED`. Успешный платёж этим методом не возвращается.
+        Если платёж уже `SUCCEEDED`, ответ `ORDER_NOT_CANCELLABLE`.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Заказ отменён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderClient"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/OrderNotOwner"
+        "409":
+          description: Заказ уже оплачен или завершён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                orderNotCancellable:
+                  $ref: "#/components/examples/OrderNotCancellable"
+
+  /point/orders:
+    get:
+      tags: [Point]
+      operationId: listPointOrders
+      summary: Входящие заказы всех точек владельца
+      description: |
+        Только `PrintProvider`. Без фильтра видны заказы его точек в статусах
+        `PAID`, `PRINTING`, `READY`, `ISSUED` и `CANCELLED`.
+        `CREATED` не возвращается. Отмена и выключение точки не прячут уже оплаченный заказ.
+        Код выдачи не возвращается.
+        `printPointId` сужает список до одной своей точки.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/OrderStatusFilter"
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/SortBy"
+        - $ref: "#/components/parameters/SortOrder"
+        - name: queue
+          in: query
+          description: Активные или завершённые заказы. Можно сочетать с фильтром status.
+          schema:
+            type: string
+            enum: [active, completed]
+        - name: printPointId
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Uuid"
+      responses:
+        "200":
+          description: Страница заказов. items может быть пустым.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPointList"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: В фильтре передана чужая или несуществующая точка
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                printPointNotFound:
+                  $ref: "#/components/examples/PrintPointNotFound"
+                printPointNotOwner:
+                  $ref: "#/components/examples/PrintPointNotOwner"
+
+  /point/orders/{orderId}:
+    get:
+      tags: [Point]
+      operationId: getPointOrder
+      summary: Заказ одной из своих точек
+      description: |
+        Сервер проверяет по порядку: заказ существует, заказ относится к точке,
+        эта точка принадлежит текущему `PrintProvider`. Роли владельца недостаточно.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Заказ без кода выдачи и без данных клиента
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPoint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/OrderNotInPoint"
+
+  /point/orders/{orderId}/start:
+    post:
+      tags: [Point]
+      operationId: startPointOrder
+      summary: Взять заказ в работу
+      description: Переход `PAID` → `PRINTING`. Другие переходы отклоняются.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Статус PRINTING
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPoint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/OrderNotInPoint"
+        "409":
+          description: Заказ не в статусе PAID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidStatusTransition:
+                  $ref: "#/components/examples/InvalidStatusTransition"
+
+  /point/orders/{orderId}/ready:
+    post:
+      tags: [Point]
+      operationId: readyPointOrder
+      summary: Отметить заказ готовым
+      description: |
+        Переход `PRINTING` → `READY`.
+        При первом таком переходе сервер создаёт код выдачи из 6 цифр
+        и показывает его клиенту. Точке код в ответе не отдаётся.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Статус READY
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPoint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/OrderNotInPoint"
+        "409":
+          description: Заказ не в статусе PRINTING
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidStatusTransition:
+                  $ref: "#/components/examples/InvalidStatusTransition"
+
+  /point/orders/{orderId}/issue:
+    post:
+      tags: [Point]
+      operationId: issuePointOrder
+      summary: Подтвердить выдачу кодом
+      description: |
+        Переход `READY` → `ISSUED` при совпадении кода.
+        Неверный код не меняет статус. Повторная выдача отклоняется.
+        Срока жизни кода и лимита попыток в MVP нет.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IssueRequest"
+      responses:
+        "200":
+          description: Статус ISSUED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPoint"
+        "400":
+          description: Код не совпал или имеет неверный формат
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidPickupCode:
+                  $ref: "#/components/examples/InvalidPickupCode"
+                validationError:
+                  $ref: "#/components/examples/PickupCodeFormat"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/OrderNotInPoint"
+        "409":
+          description: Заказ не готов к выдаче или уже выдан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                invalidStatusTransition:
+                  $ref: "#/components/examples/InvalidStatusTransition"
+                orderAlreadyIssued:
+                  $ref: "#/components/examples/OrderAlreadyIssued"
+
+  /point/orders/{orderId}/cancel:
+    post:
+      tags: [Point]
+      operationId: cancelPointOrder
+      summary: Отменить заказ, который точка не может выполнить
+      description: |
+        Переход `PAID` или `PRINTING` → `CANCELLED`.
+        В той же транзакции платёж `SUCCEEDED` становится `REFUNDED`.
+        Денежного шлюза нет: это mock-возврат, сумма остаётся в записи платежа.
+        Из `READY`, `ISSUED` и `CREATED` отмена запрещена.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancelOrderRequest"
+      responses:
+        "200":
+          description: Заказ отменён, платёж помечен как возвращённый
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderPoint"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/OrderNotInPoint"
+        "409":
+          description: Статус не допускает отмену точкой
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                orderNotCancellable:
+                  $ref: "#/components/examples/OrderNotCancellable"
+
+  /admin/print-points:
+    get:
+      tags: [Admin]
+      operationId: listAdminPrintPoints
+      summary: Все точки для модерации
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/SearchQuery"
+        - $ref: "#/components/parameters/CityFilter"
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/PrintPointStatus"
+        - name: isActive
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Страница точек
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointAdminList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /admin/print-points/{printPointId}/approve:
+    post:
+      tags: [Admin]
+      operationId: approvePrintPoint
+      summary: Одобрить заявку
+      description: Только из `PENDING`. Ставит `APPROVED` и `isActive = true`.
+      parameters:
+        - $ref: "#/components/parameters/PrintPointId"
+      responses:
+        "200":
+          description: Точка одобрена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointAdmin"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Заявка не в статусе PENDING
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                printPointNotPending:
+                  $ref: "#/components/examples/PrintPointNotPending"
+
+  /admin/print-points/{printPointId}/reject:
+    post:
+      tags: [Admin]
+      operationId: rejectPrintPoint
+      summary: Отклонить заявку
+      description: Только из `PENDING`. Ставит `REJECTED` и `isActive = false`.
+      parameters:
+        - $ref: "#/components/parameters/PrintPointId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectRequest"
+      responses:
+        "200":
+          description: Заявка отклонена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointAdmin"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Заявка не в статусе PENDING
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                printPointNotPending:
+                  $ref: "#/components/examples/PrintPointNotPending"
+
+  /admin/print-points/{printPointId}:
+    patch:
+      tags: [Admin]
+      operationId: setPrintPointActive
+      summary: Включить или выключить уже одобренную точку
+      description: |
+        Меняет только `isActive` и только у `APPROVED`. Статус не меняется.
+        `PENDING` и `REJECTED` включить нельзя.
+        Выключенная точка пропадает из каталога и не принимает новые заказы.
+        Уже созданные заказы, включая оплаченные, остаются в своих статусах.
+      parameters:
+        - $ref: "#/components/parameters/PrintPointId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetActiveRequest"
+      responses:
+        "200":
+          description: Флаг активности обновлён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintPointAdmin"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Точка ещё не одобрена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                printPointNotApproved:
+                  $ref: "#/components/examples/PrintPointNotApproved"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT в заголовке Authorization. Сервер проверяет подпись, срок и версию сессии `tv`.
+        `POST /auth/logout` увеличивает версию и отзывает все ранее выданные токены.
+        Смена URL не даёт доступ к чужой роли.
+
+  parameters:
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    PrintPointId:
+      name: printPointId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: |
+        Обязателен только у `POST /orders`. Уникален вместе с пользователем 24 часа.
+        Хранится хеш тела, код и тело ответа. Повтор до завершения первого запроса не создаёт второй заказ.
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Номер страницы. Больше 1000 сервер не принимает, чтобы не строить огромный OFFSET.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    CatalogCity:
+      name: city
+      in: query
+      required: false
+      description: |
+        Город каталога для гостя. В запросе с действующим токеном не используется:
+        город берётся из профиля. Для гостя без фильтра видны точки всех городов.
+      schema:
+        $ref: "#/components/schemas/City"
+    CityFilter:
+      name: city
+      in: query
+      required: false
+      description: Для админки фильтр необязателен. Без него видны точки всех городов.
+      schema:
+        $ref: "#/components/schemas/City"
+    SearchQuery:
+      name: q
+      in: query
+      required: false
+      description: Поиск по названию или адресу
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    OrderStatusFilter:
+      name: status
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/OrderStatus"
+    CreatedFrom:
+      name: createdFrom
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    CreatedTo:
+      name: createdTo
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    SortBy:
+      name: sortBy
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [createdAt]
+        default: createdAt
+    SortOrder:
+      name: sortOrder
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+
+  examples:
+    ValidationError:
+      summary: VALIDATION_ERROR
+      value:
+        statusCode: 400
+        code: VALIDATION_ERROR
+        error: Bad Request
+        message: Проверьте заполненные поля
+        details:
+          - field: copies
+            message: Укажите число от 1 до 100
+    InvalidEmail:
+      summary: INVALID_EMAIL
+      value:
+        statusCode: 400
+        code: INVALID_EMAIL
+        error: Bad Request
+        message: Укажите корректный адрес электронной почты
+    WeakPassword:
+      summary: WEAK_PASSWORD
+      value:
+        statusCode: 400
+        code: WEAK_PASSWORD
+        error: Bad Request
+        message: Пароль должен содержать от 8 до 72 символов, минимум одну латинскую букву и одну цифру
+    UnsupportedFileType:
+      summary: UNSUPPORTED_FILE_TYPE
+      value:
+        statusCode: 415
+        code: UNSUPPORTED_FILE_TYPE
+        error: Unsupported Media Type
+        message: Поддерживается только PDF
+    InvalidPdf:
+      summary: INVALID_PDF
+      value:
+        statusCode: 400
+        code: INVALID_PDF
+        error: Bad Request
+        message: Файл повреждён или не является корректным PDF
+    EmptyPdf:
+      summary: EMPTY_PDF
+      value:
+        statusCode: 400
+        code: EMPTY_PDF
+        error: Bad Request
+        message: В документе нет страниц
+    PickupCodeFormat:
+      summary: VALIDATION_ERROR
+      value:
+        statusCode: 400
+        code: VALIDATION_ERROR
+        error: Bad Request
+        message: Код выдачи должен состоять из 6 цифр
+    InvalidPickupCode:
+      summary: INVALID_PICKUP_CODE
+      value:
+        statusCode: 400
+        code: INVALID_PICKUP_CODE
+        error: Bad Request
+        message: Неверный код выдачи
+    Unauthorized:
+      summary: UNAUTHORIZED
+      value:
+        statusCode: 401
+        code: UNAUTHORIZED
+        error: Unauthorized
+        message: Требуется авторизация
+    InvalidCredentials:
+      summary: INVALID_CREDENTIALS
+      value:
+        statusCode: 401
+        code: INVALID_CREDENTIALS
+        error: Unauthorized
+        message: Неверный email или пароль
+    Forbidden:
+      summary: FORBIDDEN
+      value:
+        statusCode: 403
+        code: FORBIDDEN
+        error: Forbidden
+        message: Недостаточно прав
+    NotFound:
+      summary: NOT_FOUND
+      value:
+        statusCode: 404
+        code: NOT_FOUND
+        error: Not Found
+        message: Не найдено
+    PrintPointNotFound:
+      summary: PRINT_POINT_NOT_FOUND
+      value:
+        statusCode: 404
+        code: PRINT_POINT_NOT_FOUND
+        error: Not Found
+        message: Точка не найдена
+    DocumentNotOwner:
+      summary: DOCUMENT_NOT_OWNER
+      value:
+        statusCode: 404
+        code: DOCUMENT_NOT_OWNER
+        error: Not Found
+        message: Документ принадлежит другому пользователю
+    DocumentNotAvailable:
+      summary: DOCUMENT_NOT_AVAILABLE
+      value:
+        statusCode: 404
+        code: DOCUMENT_NOT_AVAILABLE
+        error: Not Found
+        message: Документ недоступен для скачивания
+    OrderNotOwner:
+      summary: ORDER_NOT_OWNER
+      value:
+        statusCode: 404
+        code: ORDER_NOT_OWNER
+        error: Not Found
+        message: Заказ принадлежит другому пользователю
+    OrderNotInPoint:
+      summary: ORDER_NOT_IN_POINT
+      value:
+        statusCode: 404
+        code: ORDER_NOT_IN_POINT
+        error: Not Found
+        message: Заказ принадлежит точке другого владельца
+    EmailAlreadyUsed:
+      summary: EMAIL_ALREADY_USED
+      value:
+        statusCode: 409
+        code: EMAIL_ALREADY_USED
+        error: Conflict
+        message: Этот email уже используется
+    PrintPointNotOwner:
+      summary: PRINT_POINT_NOT_OWNER
+      value:
+        statusCode: 404
+        code: PRINT_POINT_NOT_OWNER
+        error: Not Found
+        message: Точка принадлежит другому владельцу
+    PrintPointAlreadyApproved:
+      summary: PRINT_POINT_ALREADY_APPROVED
+      value:
+        statusCode: 409
+        code: PRINT_POINT_ALREADY_APPROVED
+        error: Conflict
+        message: У одобренной точки можно менять только тарифы
+    PrintPointNotApproved:
+      summary: PRINT_POINT_NOT_APPROVED
+      value:
+        statusCode: 409
+        code: PRINT_POINT_NOT_APPROVED
+        error: Conflict
+        message: Точка ещё не одобрена
+    PrintPointInactive:
+      summary: PRINT_POINT_INACTIVE
+      value:
+        statusCode: 409
+        code: PRINT_POINT_INACTIVE
+        error: Conflict
+        message: Точка временно не принимает заказы
+    PrintPointNotPending:
+      summary: PRINT_POINT_NOT_PENDING
+      value:
+        statusCode: 409
+        code: PRINT_POINT_NOT_PENDING
+        error: Conflict
+        message: Модерировать можно только заявку, которая ожидает решения
+    TariffMissing:
+      summary: TARIFF_MISSING
+      value:
+        statusCode: 409
+        code: TARIFF_MISSING
+        error: Conflict
+        message: У точки нет тарифа для выбранного режима печати
+    IdempotencyKeyMismatch:
+      summary: IDEMPOTENCY_KEY_MISMATCH
+      value:
+        statusCode: 409
+        code: IDEMPOTENCY_KEY_MISMATCH
+        error: Conflict
+        message: Этот ключ уже использован для другого заказа
+    IdempotencyInProgress:
+      summary: IDEMPOTENCY_IN_PROGRESS
+      value:
+        statusCode: 409
+        code: IDEMPOTENCY_IN_PROGRESS
+        error: Conflict
+        message: Запрос с этим ключом ещё выполняется
+    QuoteNotFound:
+      summary: QUOTE_NOT_FOUND
+      value:
+        statusCode: 404
+        code: QUOTE_NOT_FOUND
+        error: Not Found
+        message: Расчёт не найден
+    QuoteNotOwner:
+      summary: QUOTE_NOT_OWNER
+      value:
+        statusCode: 404
+        code: QUOTE_NOT_OWNER
+        error: Not Found
+        message: Расчёт принадлежит другому пользователю
+    CityChanged:
+      summary: CITY_CHANGED
+      value:
+        statusCode: 409
+        code: CITY_CHANGED
+        error: Conflict
+        message: Город в профиле изменился, запросите стоимость ещё раз
+    QuoteExpired:
+      summary: QUOTE_EXPIRED
+      value:
+        statusCode: 409
+        code: QUOTE_EXPIRED
+        error: Conflict
+        message: Расчёт устарел, запросите стоимость ещё раз
+    PriceChanged:
+      summary: PRICE_CHANGED
+      value:
+        statusCode: 409
+        code: PRICE_CHANGED
+        error: Conflict
+        message: Тариф изменился, запросите стоимость ещё раз
+    QuotePointMismatch:
+      summary: QUOTE_POINT_MISMATCH
+      value:
+        statusCode: 409
+        code: QUOTE_POINT_MISMATCH
+        error: Conflict
+        message: Выбранной точки нет в этом расчёте
+    OrderNotCancellable:
+      summary: ORDER_NOT_CANCELLABLE
+      value:
+        statusCode: 409
+        code: ORDER_NOT_CANCELLABLE
+        error: Conflict
+        message: Заказ нельзя отменить
+    InternalError:
+      summary: INTERNAL_ERROR
+      value:
+        statusCode: 500
+        code: INTERNAL_ERROR
+        error: Internal Server Error
+        message: Не удалось выполнить операцию
+    OrderNotPayable:
+      summary: ORDER_NOT_PAYABLE
+      value:
+        statusCode: 409
+        code: ORDER_NOT_PAYABLE
+        error: Conflict
+        message: Оплатить можно только заказ в статусе «Создан»
+    PaymentAlreadySucceeded:
+      summary: PAYMENT_ALREADY_SUCCEEDED
+      value:
+        statusCode: 409
+        code: PAYMENT_ALREADY_SUCCEEDED
+        error: Conflict
+        message: Заказ уже оплачен
+    InvalidStatusTransition:
+      summary: INVALID_STATUS_TRANSITION
+      value:
+        statusCode: 409
+        code: INVALID_STATUS_TRANSITION
+        error: Conflict
+        message: Недопустимый переход статуса
+    OrderAlreadyIssued:
+      summary: ORDER_ALREADY_ISSUED
+      value:
+        statusCode: 409
+        code: ORDER_ALREADY_ISSUED
+        error: Conflict
+        message: Заказ уже выдан
+    FileTooLarge:
+      summary: FILE_TOO_LARGE
+      value:
+        statusCode: 413
+        code: FILE_TOO_LARGE
+        error: Payload Too Large
+        message: Максимальный размер файла — 50 МБ
+
+  responses:
+    ValidationError:
+      description: Код VALIDATION_ERROR. message — строка или массив строк по полям.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            validationError:
+              $ref: "#/components/examples/ValidationError"
+    Unauthorized:
+      description: Нет токена или токен недействителен. Код UNAUTHORIZED.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            unauthorized:
+              $ref: "#/components/examples/Unauthorized"
+    Forbidden:
+      description: Роль не подходит для операции. Код FORBIDDEN.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            forbidden:
+              $ref: "#/components/examples/Forbidden"
+    NotFound:
+      description: Идентификатор ни на что не ссылается. Код NOT_FOUND.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              $ref: "#/components/examples/NotFound"
+    DocumentNotOwner:
+      description: Документ не найден или принадлежит другому пользователю.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              $ref: "#/components/examples/NotFound"
+            documentNotOwner:
+              $ref: "#/components/examples/DocumentNotOwner"
+    DocumentAccessError:
+      description: Файл не найден, принадлежит другому клиенту или недоступен этой точке.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              $ref: "#/components/examples/NotFound"
+            documentNotOwner:
+              $ref: "#/components/examples/DocumentNotOwner"
+            documentNotAvailable:
+              $ref: "#/components/examples/DocumentNotAvailable"
+    OrderNotOwner:
+      description: Заказ не найден или принадлежит другому клиенту.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              $ref: "#/components/examples/NotFound"
+            orderNotOwner:
+              $ref: "#/components/examples/OrderNotOwner"
+    PrintPointAccessError:
+      description: Точка не найдена или принадлежит другому владельцу.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            printPointNotFound:
+              $ref: "#/components/examples/PrintPointNotFound"
+            printPointNotOwner:
+              $ref: "#/components/examples/PrintPointNotOwner"
+    OrderNotInPoint:
+      description: Заказ не найден или принадлежит точке другого владельца.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              $ref: "#/components/examples/NotFound"
+            orderNotInPoint:
+              $ref: "#/components/examples/OrderNotInPoint"
+
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    Money:
+      type: integer
+      minimum: 0
+      description: Сумма в копейках
+    Pagination:
+      type: object
+      required: [page, limit, totalItems, totalPages]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+    PrintPointPublicList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrintPointPublic"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+    PrintPointOwnerList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrintPointOwner"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+    PrintPointAdminList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrintPointAdmin"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+    OrderClientList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderClient"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+    OrderPointList:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderPoint"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+    ErrorCode:
+      type: string
+      description: |
+        Единый список бизнес-ошибок. Набор кодов не меняется без правки этого контракта.
+        У каждого кода один HTTP-статус и один текст `message`.
+
+        | code | HTTP | message |
+        | --- | --- | --- |
+        | VALIDATION_ERROR | 400 | Проверьте заполненные поля |
+        | INVALID_EMAIL | 400 | Укажите корректный адрес электронной почты |
+        | WEAK_PASSWORD | 400 | Пароль должен содержать от 8 до 72 символов, минимум одну латинскую букву и одну цифру |
+        | UNSUPPORTED_FILE_TYPE | 415 | Поддерживается только PDF |
+        | INVALID_PDF | 400 | Файл повреждён или не является корректным PDF |
+        | EMPTY_PDF | 400 | В документе нет страниц |
+        | INVALID_PICKUP_CODE | 400 | Неверный код выдачи |
+        | UNAUTHORIZED | 401 | Требуется авторизация |
+        | INVALID_CREDENTIALS | 401 | Неверный email или пароль |
+        | FORBIDDEN | 403 | Недостаточно прав |
+        | NOT_FOUND | 404 | Не найдено |
+        | PRINT_POINT_NOT_FOUND | 404 | Точка не найдена |
+        | PRINT_POINT_NOT_OWNER | 404 | Точка принадлежит другому владельцу |
+        | DOCUMENT_NOT_OWNER | 404 | Документ принадлежит другому пользователю |
+        | DOCUMENT_NOT_AVAILABLE | 404 | Документ недоступен для скачивания |
+        | ORDER_NOT_OWNER | 404 | Заказ принадлежит другому пользователю |
+        | ORDER_NOT_IN_POINT | 404 | Заказ принадлежит точке другого владельца |
+        | QUOTE_NOT_FOUND | 404 | Расчёт не найден |
+        | QUOTE_NOT_OWNER | 404 | Расчёт принадлежит другому пользователю |
+        | EMAIL_ALREADY_USED | 409 | Этот email уже используется |
+        | PRINT_POINT_ALREADY_APPROVED | 409 | У одобренной точки можно менять только тарифы |
+        | PRINT_POINT_NOT_APPROVED | 409 | Точка ещё не одобрена |
+        | PRINT_POINT_INACTIVE | 409 | Точка временно не принимает заказы |
+        | PRINT_POINT_NOT_PENDING | 409 | Модерировать можно только заявку, которая ожидает решения |
+        | TARIFF_MISSING | 409 | У точки нет тарифа для выбранного режима печати |
+        | IDEMPOTENCY_KEY_MISMATCH | 409 | Этот ключ уже использован для другого заказа |
+        | IDEMPOTENCY_IN_PROGRESS | 409 | Запрос с этим ключом ещё выполняется |
+        | QUOTE_EXPIRED | 409 | Расчёт устарел, запросите стоимость ещё раз |
+        | CITY_CHANGED | 409 | Город в профиле изменился, запросите стоимость ещё раз |
+        | PRICE_CHANGED | 409 | Тариф изменился, запросите стоимость ещё раз |
+        | QUOTE_POINT_MISMATCH | 409 | Выбранной точки нет в этом расчёте |
+        | ORDER_NOT_CANCELLABLE | 409 | Заказ нельзя отменить |
+        | ORDER_NOT_PAYABLE | 409 | Оплатить можно только заказ в статусе «Создан» |
+        | PAYMENT_ALREADY_SUCCEEDED | 409 | Заказ уже оплачен |
+        | INVALID_STATUS_TRANSITION | 409 | Недопустимый переход статуса |
+        | ORDER_ALREADY_ISSUED | 409 | Заказ уже выдан |
+        | FILE_TOO_LARGE | 413 | Максимальный размер файла — 50 МБ |
+        | INTERNAL_ERROR | 500 | Не удалось выполнить операцию |
+
+        Для `VALIDATION_ERROR` общий текст лежит в `message`, ошибки полей — в `details`.
+        Код выдачи неверного формата — тоже `VALIDATION_ERROR`, текст: «Код выдачи должен состоять из 6 цифр».
+        Несовпавший код выдачи — `INVALID_PICKUP_CODE`.
+        Необработанный сбой — `INTERNAL_ERROR`. Клиент не получает stack trace и текст исключения Prisma.
+      enum:
+        - VALIDATION_ERROR
+        - INVALID_EMAIL
+        - WEAK_PASSWORD
+        - UNSUPPORTED_FILE_TYPE
+        - INVALID_PDF
+        - EMPTY_PDF
+        - INVALID_PICKUP_CODE
+        - UNAUTHORIZED
+        - INVALID_CREDENTIALS
+        - FORBIDDEN
+        - NOT_FOUND
+        - PRINT_POINT_NOT_FOUND
+        - PRINT_POINT_NOT_OWNER
+        - DOCUMENT_NOT_OWNER
+        - DOCUMENT_NOT_AVAILABLE
+        - ORDER_NOT_OWNER
+        - ORDER_NOT_IN_POINT
+        - QUOTE_NOT_FOUND
+        - QUOTE_NOT_OWNER
+        - EMAIL_ALREADY_USED
+        - PRINT_POINT_ALREADY_APPROVED
+        - PRINT_POINT_NOT_APPROVED
+        - PRINT_POINT_INACTIVE
+        - PRINT_POINT_NOT_PENDING
+        - TARIFF_MISSING
+        - IDEMPOTENCY_KEY_MISMATCH
+        - IDEMPOTENCY_IN_PROGRESS
+        - QUOTE_EXPIRED
+        - CITY_CHANGED
+        - PRICE_CHANGED
+        - QUOTE_POINT_MISMATCH
+        - ORDER_NOT_CANCELLABLE
+        - ORDER_NOT_PAYABLE
+        - PAYMENT_ALREADY_SUCCEEDED
+        - INVALID_STATUS_TRANSITION
+        - ORDER_ALREADY_ISSUED
+        - FILE_TOO_LARGE
+        - INTERNAL_ERROR
+    Error:
+      type: object
+      required: [statusCode, code, message]
+      properties:
+        statusCode:
+          type: integer
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        error:
+          type: string
+          description: Короткая причина HTTP, как в NestJS. На неё не закладывается логика клиента.
+        message:
+          type: string
+          description: Текст для человека. Внутренние исключения сюда не попадают.
+        details:
+          type: array
+          description: Ошибки отдельных полей. Есть у VALIDATION_ERROR.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+    UserRole:
+      type: string
+      enum: [CLIENT, PrintProvider, ADMIN]
+    RegisterRole:
+      type: string
+      enum: [CLIENT, PrintProvider]
+    ColorMode:
+      type: string
+      enum: [BW, COLOR]
+    OrderStatus:
+      type: string
+      enum: [CREATED, PAID, PRINTING, READY, ISSUED, CANCELLED]
+      description: |
+        Допустимые переходы, каждый своим методом:
+        CREATED → PAID после успешной оплаты.
+        CREATED → CANCELLED клиентом до успешной оплаты.
+        PAID → PRINTING точкой.
+        PAID → CANCELLED точкой, платёж при этом REFUNDED.
+        PRINTING → READY точкой.
+        PRINTING → CANCELLED точкой, платёж при этом REFUNDED.
+        READY → ISSUED после верного кода.
+        ISSUED и CANCELLED дальше не переходят.
+        Клиент и точка не присылают новый статус произвольным телом.
+    PaymentStatus:
+      type: string
+      enum: [PENDING, SUCCEEDED, FAILED, REFUNDED]
+      description: |
+        Состояние денег отдельно от заказа.
+        REFUNDED возможен у отменённого заказа, который уже был оплачен.
+        Заказ может быть CANCELLED, пока возврат ещё не отмечен, только внутри незавершённой транзакции.
+        Наружу такая пара не отдаётся.
+    PrintPointStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED]
+      description: |
+        В каталоге только APPROVED вместе с isActive true.
+        PENDING и REJECTED не активируются. Одобрить и отклонить может только ADMIN.
+    Password:
+      type: string
+      minLength: 8
+      maxLength: 72
+      pattern: "^(?=.*[A-Za-z])(?=.*\\d).{8,72}$"
+      description: От 8 до 72 символов, минимум одна латинская буква и одна цифра
+    User:
+      type: object
+      required: [id, email, role, city]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/UserRole"
+        city:
+          $ref: "#/components/schemas/City"
+      description: |
+        Точки владельца этим объектом не отдаются. Их список — `GET /print-points/mine`.
+        `city` — город самого пользователя. У владельца точки он не ограничивает города его точек.
+    RegisterRequest:
+      type: object
+      required: [email, password, role, city]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          $ref: "#/components/schemas/Password"
+        role:
+          $ref: "#/components/schemas/RegisterRole"
+        city:
+          $ref: "#/components/schemas/City"
+    UpdateCityRequest:
+      type: object
+      required: [city]
+      properties:
+        city:
+          $ref: "#/components/schemas/City"
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+          maxLength: 72
+    AuthResponse:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: |
+            Срок access-токена в секундах. Refresh-токена нет.
+            До истечения срока все копии отзывает `POST /auth/logout`.
+          example: 604800
+        user:
+          $ref: "#/components/schemas/User"
+    Document:
+      type: object
+      required: [id, originalName, sizeBytes, pageCount, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        originalName:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 52428800
+        pageCount:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+    City:
+      type: string
+      minLength: 1
+      maxLength: 100
+      example: Калуга
+      description: |
+        Название города без префикса «г.».
+        При сравнении сервер убирает пробелы по краям и не учитывает регистр.
+        «Калуга» и «калуга» — один город. «Калуга» и «Москва» — разные.
+    PrintPointPublic:
+      type: object
+      required: [id, name, city, address, workingHours, pricePerPageBw, pricePerPageColor]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        name:
+          type: string
+        city:
+          $ref: "#/components/schemas/City"
+        address:
+          type: string
+        workingHours:
+          type: string
+        pricePerPageBw:
+          $ref: "#/components/schemas/Money"
+        pricePerPageColor:
+          $ref: "#/components/schemas/Money"
+    PrintPointWrite:
+      type: object
+      required: [name, city, address, workingHours, pricePerPageBw, pricePerPageColor]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        city:
+          $ref: "#/components/schemas/City"
+        address:
+          type: string
+          minLength: 1
+          maxLength: 500
+        workingHours:
+          type: string
+          minLength: 1
+          maxLength: 200
+        pricePerPageBw:
+          type: integer
+          minimum: 1
+          description: Копейки за чёрно-белую страницу
+        pricePerPageColor:
+          type: integer
+          minimum: 1
+          description: Копейки за цветную страницу
+    PrintPointPrices:
+      type: object
+      required: [pricePerPageBw, pricePerPageColor]
+      properties:
+        pricePerPageBw:
+          type: integer
+          minimum: 1
+          description: Копейки за чёрно-белую страницу
+        pricePerPageColor:
+          type: integer
+          minimum: 1
+          description: Копейки за цветную страницу
+    PrintPointOwner:
+      allOf:
+        - $ref: "#/components/schemas/PrintPointPublic"
+        - type: object
+          required: [status, isActive, rejectionReason, commissionBps]
+          properties:
+            status:
+              $ref: "#/components/schemas/PrintPointStatus"
+            isActive:
+              type: boolean
+              description: true только у APPROVED. Новая точка создаётся с false.
+            rejectionReason:
+              type: string
+              nullable: true
+            commissionBps:
+              type: integer
+              minimum: 0
+              description: Базисные пункты. 1000 = 10%. В MVP сервер записывает 0.
+    PrintPointAdmin:
+      allOf:
+        - $ref: "#/components/schemas/PrintPointOwner"
+        - type: object
+          required: [owner]
+          properties:
+            owner:
+              type: object
+              required: [id, email]
+              properties:
+                id:
+                  $ref: "#/components/schemas/Uuid"
+                email:
+                  type: string
+                  format: email
+    QuoteRequest:
+      type: object
+      required: [documentId, colorMode, copies]
+      properties:
+        documentId:
+          $ref: "#/components/schemas/Uuid"
+        colorMode:
+          $ref: "#/components/schemas/ColorMode"
+        copies:
+          type: integer
+          minimum: 1
+          maximum: 100
+    QuoteOffer:
+      type: object
+      required: [printPointId, name, city, address, workingHours, pricePerPage, total]
+      properties:
+        printPointId:
+          $ref: "#/components/schemas/Uuid"
+        name:
+          type: string
+        city:
+          $ref: "#/components/schemas/City"
+        address:
+          type: string
+        workingHours:
+          type: string
+        pricePerPage:
+          $ref: "#/components/schemas/Money"
+        total:
+          $ref: "#/components/schemas/Money"
+    Quote:
+      type: object
+      required: [id, expiresAt, city, documentId, pageCount, colorMode, copies, offers]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        expiresAt:
+          type: string
+          format: date-time
+          description: Момент, после которого расчёт нельзя использовать. Срок — 15 минут.
+        city:
+          $ref: "#/components/schemas/City"
+          description: Город профиля на момент расчёта
+        documentId:
+          $ref: "#/components/schemas/Uuid"
+        pageCount:
+          type: integer
+          minimum: 1
+        colorMode:
+          $ref: "#/components/schemas/ColorMode"
+        copies:
+          type: integer
+        offers:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuoteOffer"
+    CreateOrderRequest:
+      type: object
+      required: [quoteId, printPointId]
+      properties:
+        quoteId:
+          $ref: "#/components/schemas/Uuid"
+        printPointId:
+          $ref: "#/components/schemas/Uuid"
+          description: Точка из offers этого расчёта. Режим и число копий берутся из расчёта.
+    PaymentView:
+      type: object
+      required: [status, amount]
+      properties:
+        status:
+          $ref: "#/components/schemas/PaymentStatus"
+        amount:
+          $ref: "#/components/schemas/Money"
+    OrderClient:
+      type: object
+      required:
+        - id
+        - status
+        - createdAt
+        - updatedAt
+        - printPoint
+        - document
+        - colorMode
+        - copies
+        - pageCount
+        - unitPrice
+        - subtotal
+        - commissionBps
+        - commissionAmount
+        - total
+        - currency
+        - payment
+        - pickupCode
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        printPoint:
+          type: object
+          required: [id, name, city, address]
+          properties:
+            id:
+              $ref: "#/components/schemas/Uuid"
+            name:
+              type: string
+            city:
+              $ref: "#/components/schemas/City"
+            address:
+              type: string
+            workingHours:
+              type: string
+              description: Текущие часы работы точки печати.
+        document:
+          type: object
+          required: [id, originalName, pageCount]
+          properties:
+            id:
+              $ref: "#/components/schemas/Uuid"
+            originalName:
+              type: string
+            pageCount:
+              type: integer
+        colorMode:
+          $ref: "#/components/schemas/ColorMode"
+        copies:
+          type: integer
+        pageCount:
+          type: integer
+          description: Снимок числа страниц на момент создания заказа
+        unitPrice:
+          $ref: "#/components/schemas/Money"
+          description: Снимок цены одной страницы в выбранном режиме
+        subtotal:
+          $ref: "#/components/schemas/Money"
+          description: pageCount × copies × unitPrice
+        commissionBps:
+          type: integer
+          minimum: 0
+          description: Снимок ставки комиссии. 1000 = 10%. В MVP 0.
+        commissionAmount:
+          $ref: "#/components/schemas/Money"
+          description: Комиссия в копейках, удержанная из subtotal
+        total:
+          $ref: "#/components/schemas/Money"
+          description: Сумма к оплате. При нулевой комиссии равна subtotal.
+        currency:
+          type: string
+          enum: [RUB]
+        payment:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/PaymentView"
+        pickupCode:
+          type: string
+          nullable: true
+          pattern: "^\\d{6}$"
+          description: Не null только когда статус READY или ISSUED
+    OrderPoint:
+      type: object
+      required:
+        - id
+        - status
+        - createdAt
+        - printPoint
+        - document
+        - colorMode
+        - copies
+        - pageCount
+        - unitPrice
+        - subtotal
+        - commissionBps
+        - commissionAmount
+        - total
+        - currency
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        createdAt:
+          type: string
+          format: date-time
+        printPoint:
+          type: object
+          required: [id, name, city, address]
+          properties:
+            id:
+              $ref: "#/components/schemas/Uuid"
+            name:
+              type: string
+            city:
+              $ref: "#/components/schemas/City"
+            address:
+              type: string
+            workingHours:
+              type: string
+              description: Текущие часы работы точки печати.
+        document:
+          type: object
+          required: [id, originalName, pageCount]
+          properties:
+            id:
+              $ref: "#/components/schemas/Uuid"
+            originalName:
+              type: string
+            pageCount:
+              type: integer
+        colorMode:
+          $ref: "#/components/schemas/ColorMode"
+        copies:
+          type: integer
+        pageCount:
+          type: integer
+        unitPrice:
+          $ref: "#/components/schemas/Money"
+        subtotal:
+          $ref: "#/components/schemas/Money"
+        commissionBps:
+          type: integer
+          minimum: 0
+        commissionAmount:
+          $ref: "#/components/schemas/Money"
+        total:
+          $ref: "#/components/schemas/Money"
+        currency:
+          type: string
+          enum: [RUB]
+    PayRequest:
+      type: object
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [SUCCESS, FAILURE]
+    CancelOrderRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Почему точка не может выполнить заказ
+    IssueRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: "^\\d{6}$"
+    RejectRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    SetActiveRequest:
+      type: object
+      required: [isActive]
+      properties:
+        isActive:
+          type: boolean
+
+security:
+  - bearerAuth: []
