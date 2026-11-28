@@ -52,13 +52,13 @@ export async function PointsContent({ searchParams }: { searchParams: PointsSear
           <PixelSprite kind="kiosk" className={styles.scene} />
         </div>
         {guest ? (
-          <form action={routes.points} className={styles.cityForm} key={city}>
+          <form action={routes.points} className={styles.cityForm} key={`city-form:${city}`}>
             <Field name="city" label="Город" placeholder="Все города" defaultValue={city} maxLength={100} />
             <Button type="submit">Показать точки</Button>
           </form>
         ) : null}
         <PointSelector
-          key={documentId ?? city}
+          key={documentId ? `document:${documentId}` : `catalog:${city}`}
           city={city || undefined}
           showCity={guest && !city}
           documentId={documentId}

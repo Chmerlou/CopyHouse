@@ -27,7 +27,7 @@ async function ProtectedCheckout({ params }: { params: Promise<{ documentId: str
     <main id="main-content" tabIndex={-1} className={styles.page}>
       <div className={styles.shell}>
         <div className="work-toolbar">
-          <Link className={styles.back} href={routes.orderPoints(documentId)}>Назад к выбору точки</Link>
+          <Link className={styles.back} href={routes.orderPoints(documentId)}>Изменить точку печати</Link>
           <p className="work-step">Шаг 4 из 4</p>
         </div>
         <div className={styles.layout}>

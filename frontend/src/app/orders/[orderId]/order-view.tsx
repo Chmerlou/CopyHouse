@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { ApiSchema } from "@/shared/api/contract";
 import { orderStatusLabel } from "@/shared/order-status";
 import { routes } from "@/shared/routes";
@@ -52,6 +52,16 @@ export function OrderView({ orderId, loadOrder = requestOrder, payOrder = reques
   const [revision, setRevision] = useState(0);
   const status = order?.status;
   const canRefresh = status === "PAID" || status === "PRINTING" || status === "READY";
+  const actionButton = useRef<HTMLButtonElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const restoreFocus = useRef<{ status: Order["status"] | undefined } | null>(null);
+
+  useEffect(() => {
+    if (!restoreFocus.current || paying || refreshing) return;
+    const target = restoreFocus.current.status === status ? actionButton.current : heading.current;
+    restoreFocus.current = null;
+    if (document.activeElement === document.body) (target ?? heading.current)?.focus();
+  }, [paying, refreshing, status]);
 
   useEffect(() => {
     let active = true;
@@ -80,13 +90,15 @@ export function OrderView({ orderId, loadOrder = requestOrder, payOrder = reques
     return () => window.clearInterval(timer);
   }, [canRefresh]);
 
-  function refresh() {
+  function refresh(event: MouseEvent<HTMLButtonElement>) {
+    restoreFocus.current = document.activeElement === event.currentTarget ? { status } : null;
     setRefreshing(true);
     setRevision((value) => value + 1);
   }
 
-  async function pay() {
+  async function pay(event: MouseEvent<HTMLButtonElement>) {
     if (paying) return;
+    restoreFocus.current = document.activeElement === event.currentTarget ? { status } : null;
     setPaying(true);
     setPayError(false);
     try { setOrder(await payOrder(orderId, "SUCCESS")); } catch { setPayError(true); }
@@ -96,7 +108,7 @@ export function OrderView({ orderId, loadOrder = requestOrder, payOrder = reques
   if (loading) return <section className={styles.card} aria-busy="true"><p>Загружаем заказ…</p></section>;
   if (!order) return (
     <section className={styles.card}>
-      <h1>Заказ недоступен</h1>
+      <h1 ref={heading} tabIndex={-1}>Заказ недоступен</h1>
       <p className={styles.lead} role="alert">
         {loadError === "session_expired" ? "Войдите снова, чтобы открыть заказ."
           : loadError === "order_unavailable" ? "Проверьте, есть ли этот заказ в вашем списке."
@@ -105,7 +117,7 @@ export function OrderView({ orderId, loadOrder = requestOrder, payOrder = reques
       {loadError === "session_expired" ? (
         <Link className={styles.secondary} href={`${routes.login}?returnTo=${encodeURIComponent(routes.order(orderId))}`}>Войти</Link>
       ) : loadError !== "order_unavailable" ? (
-        <button className={styles.secondary} type="button" disabled={refreshing} onClick={refresh}>
+        <button ref={actionButton} className={styles.secondary} type="button" disabled={refreshing} onClick={refresh}>
           {refreshing ? "Загружаем…" : "Повторить"}
         </button>
       ) : null}
@@ -124,7 +136,7 @@ export function OrderView({ orderId, loadOrder = requestOrder, payOrder = reques
   return (
     <section className={styles.card} aria-labelledby="order-title">
       <div aria-live="polite">
-        <h1 id="order-title">{failed ? "Оплата не прошла" : knownStatus ? titles[order.status] : "Статус уточняется"}</h1>
+        <h1 ref={heading} tabIndex={-1} id="order-title">{failed ? "Оплата не прошла" : knownStatus ? titles[order.status] : "Статус уточняется"}</h1>
         {readyForPickup && (
           <section className={styles.pickup} aria-label="Получение заказа">
             {order.pickupCode && <div className={styles.pickupCode}><span>Код выдачи</span><strong>{order.pickupCode}</strong></div>}
@@ -156,13 +168,13 @@ export function OrderView({ orderId, loadOrder = requestOrder, payOrder = reques
         : order.status === "PAID" ? <p className={styles.paymentNote}>Тестовая оплата прошла без списания денег.</p> : null}
       {needsPayment && payError ? <p className={styles.error} role="alert">Не удалось подтвердить оплату. Заказ сохранён, оплату можно повторить.</p> : null}
       {loadError ? <p className={styles.error} role="alert">Не удалось обновить статус. Показаны последние данные.</p> : null}
-      {needsPayment ? <button className={styles.primary} type="button" disabled={paying} onClick={pay}>
+      {needsPayment ? <button ref={actionButton} className={styles.primary} type="button" disabled={paying} onClick={pay}>
         {paying ? "Подтверждаем оплату…" : payError ? "Повторить оплату" : "Оплатить заказ"}
       </button> : null}
       <div className={styles.orderActions}>
         <Link className={styles.back} href={routes.accountOrders}>Мои заказы</Link>
         {canRefresh ? (
-          <button className={styles.refresh} type="button" disabled={refreshing} onClick={refresh}>
+          <button ref={actionButton} className={styles.refresh} type="button" disabled={refreshing} onClick={refresh}>
             {refreshing ? "Обновляем…" : "Обновить статус"}
           </button>
         ) : null}

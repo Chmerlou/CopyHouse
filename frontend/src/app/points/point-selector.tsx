@@ -1,36 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ApiSchema } from "@/shared/api/contract";
-import { readPrintOptions, savePrintSettings, SELECTED_PRINT_POINT_KEY } from "@/shared/order-draft";
+import { readPrintOptions, readSelectedPrintPointId, saveSelectedPrintPointId } from "@/shared/order-draft";
+import { PointRequestError, quoteMatchesOptions, requestQuote, saveQuotedPoint } from "@/shared/print-quote";
 import { routes } from "@/shared/routes";
 import styles from "./points.module.css";
 
 type PrintPoint = ApiSchema<"PrintPointPublic">;
 type PrintPointList = ApiSchema<"PrintPointPublicList">;
-type OfferPoint = Omit<ApiSchema<"QuoteOffer">, "printPointId"> & { id: string };
+type OfferPoint = ApiSchema<"QuoteOffer"> & { id: string };
 type Quote = ApiSchema<"Quote">;
 type CreateQuote = (input: ApiSchema<"QuoteRequest">) => Promise<Quote>;
 
 export type ListPrintPoints = (city?: string) => Promise<PrintPoint[]>;
-
-class PointRequestError extends Error {
-  constructor(message: string, readonly signIn = false) {
-    super(message);
-  }
-}
-
-const requestQuote: CreateQuote = async (input) => {
-  const response = await fetch("/api/quotes", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (response.status === 401) throw new PointRequestError("Войдите в аккаунт снова, чтобы получить цены.", true);
-  if (!response.ok) throw new PointRequestError("Попробуйте рассчитать стоимость ещё раз.");
-  return response.json();
-};
 
 async function requestPrintPointPage(page: number, city?: string): Promise<PrintPointList> {
   const query = new URLSearchParams({ page: String(page), limit: "100" });
@@ -87,6 +71,12 @@ export function PointSelector({
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "missing">("loading");
   const [error, setError] = useState<PointRequestError | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
+  const restoreFocus = useRef(false);
+  const focusResults = useCallback((element: HTMLElement | null) => {
+    if (!element || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    if (document.activeElement === document.body) element.focus();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -100,16 +90,14 @@ export function PointSelector({
       }
 
       const nextQuote = options ? await createQuote(options) : null;
-      if (options && nextQuote && (
-        nextQuote.documentId !== options.documentId
-        || nextQuote.colorMode !== options.colorMode
-        || nextQuote.copies !== options.copies
-      )) throw new PointRequestError("Не удалось получить цены для выбранных параметров. Повторите расчёт.");
+      if (options && nextQuote && !quoteMatchesOptions(nextQuote, options)) {
+        throw new PointRequestError("Не удалось получить цены для выбранных параметров. Повторите расчёт.");
+      }
       const result = nextQuote
-        ? nextQuote.offers.map(({ printPointId, ...offer }) => ({ ...offer, id: printPointId }))
+        ? nextQuote.offers.map((offer) => ({ ...offer, id: offer.printPointId }))
         : await requestPoints(city);
       if (!active) return;
-      const storedId = selectable ? sessionStorage.getItem(SELECTED_PRINT_POINT_KEY) : null;
+      const storedId = selectable ? readSelectedPrintPointId(documentId) : null;
       const hasPreferred = result.some((point) => point.id === storedId);
       setPoints(result);
       setQuote(nextQuote);
@@ -130,6 +118,7 @@ export function PointSelector({
   }, [city, createQuote, documentId, requestPoints, requestVersion, selectable]);
 
   function reload() {
+    restoreFocus.current = document.activeElement !== document.body;
     setStatus("loading");
     setRequestVersion((version) => version + 1);
   }
@@ -137,7 +126,7 @@ export function PointSelector({
   function selectPoint(id: string) {
     setSelectedId(id);
     setMissingPreferred(false);
-    sessionStorage.setItem(SELECTED_PRINT_POINT_KEY, id);
+    saveSelectedPrintPointId(id, documentId);
   }
 
   const selected = points.find((point) => point.id === selectedId);
@@ -145,42 +134,33 @@ export function PointSelector({
   function saveSelection(event: { preventDefault(): void }) {
     if (!quote || !selected || !("total" in selected)) return;
     const options = readPrintOptions(quote.documentId);
-    if (!options || options.colorMode !== quote.colorMode || options.copies !== quote.copies
+    if (!options || !quoteMatchesOptions(quote, options)
       || Date.parse(quote.expiresAt) <= Date.now()) {
       event.preventDefault();
       reload();
       return;
     }
-    savePrintSettings({
-      documentId: quote.documentId,
-      colorMode: quote.colorMode,
-      copies: quote.copies,
-      quoteId: quote.id,
-      printPointId: selected.id,
-      printPointName: selected.name,
-      printPointAddress: selected.address,
-      pricePerPage: selected.pricePerPage,
-      total: selected.total,
-      expiresAt: quote.expiresAt,
-    });
+    saveQuotedPoint(quote, selected);
   }
 
   if (status === "loading") {
+    const label = documentId ? "Рассчитываем цены" : "Загружаем точки печати";
     return (
       <div
         className={styles.skeletonList}
         role="status"
-        aria-label={documentId ? "Рассчитываем цены" : "Загружаем точки печати"}
+        aria-label={label}
         aria-busy="true"
       >
-        {[0, 1, 2].map((item) => <span key={item} />)}
+        <p>{label}…</p>
+        {[0, 1, 2].map((item) => <span key={item} aria-hidden="true" />)}
       </div>
     );
   }
 
   if (status === "error") {
     return (
-      <div className={styles.state} role="alert">
+      <div ref={focusResults} tabIndex={-1} className={styles.state} role="alert">
         <strong>{documentId ? "Не удалось рассчитать стоимость" : "Не удалось загрузить точки"}</strong>
         <p>{error?.message ?? "Попробуйте ещё раз."}</p>
         {error?.signIn ? (
@@ -194,7 +174,7 @@ export function PointSelector({
 
   if (status === "missing" && documentId) {
     return (
-      <div className={styles.state}>
+      <div ref={focusResults} tabIndex={-1} className={styles.state}>
         <strong>Сначала настройте печать</strong>
         <Link href={routes.configure(documentId)}>Указать параметры печати</Link>
       </div>
@@ -203,7 +183,7 @@ export function PointSelector({
 
   if (!points.length) {
     return (
-      <div className={styles.state} role="status">
+      <div ref={focusResults} tabIndex={-1} className={styles.state} role="status">
         <strong>{documentId ? "Нет предложений для этих параметров"
           : showCity ? "Пока нет точек печати" : "В вашем городе пока нет точек печати"}</strong>
         <p>{documentId ? "Попробуйте изменить цвет печати или число копий."
@@ -266,7 +246,7 @@ export function PointSelector({
   );
 
   if (!selectable) {
-    return <section className={styles.fieldset} aria-label="Точки печати">{pointList}</section>;
+    return <section ref={focusResults} tabIndex={-1} className={styles.fieldset} aria-label="Точки печати">{pointList}</section>;
   }
 
   return (
@@ -277,7 +257,7 @@ export function PointSelector({
         </p>
       ) : null}
       {missingPreferred ? <p role="status">Выбранный ранее копицентр недоступен для этого заказа. Выберите другой.</p> : null}
-      <fieldset className={styles.fieldset}>
+      <fieldset ref={focusResults} tabIndex={-1} className={styles.fieldset}>
         <legend className={styles.srOnly}>Выберите одну точку печати</legend>
         {pointList}
       </fieldset>

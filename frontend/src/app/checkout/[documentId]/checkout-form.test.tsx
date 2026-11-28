@@ -48,6 +48,7 @@ describe("CheckoutForm", () => {
     await user.click(screen.getByRole("button", { name: "Подтвердить и оплатить" }));
     expect(await screen.findByRole("link", { name: "Пересчитать цены" }))
       .toHaveAttribute("href", "/points?documentId=document-one");
+    expect(screen.getByRole("link", { name: "Пересчитать цены" })).toHaveFocus();
     expect(push).not.toHaveBeenCalled();
   });
 

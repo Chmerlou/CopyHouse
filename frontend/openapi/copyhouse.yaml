@@ -832,7 +832,12 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Limit"
-        - $ref: "#/components/parameters/OrderStatusFilter"
+        - name: status
+          in: query
+          description: Статус оплаченного заказа; CREATED недоступен точке.
+          schema:
+            type: string
+            enum: [PAID, PRINTING, READY, ISSUED, CANCELLED]
         - $ref: "#/components/parameters/CreatedFrom"
         - $ref: "#/components/parameters/CreatedTo"
         - $ref: "#/components/parameters/SortBy"

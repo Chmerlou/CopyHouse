@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent, type DragEvent, useState } from "react";
+import { type ChangeEvent, type DragEvent, type MouseEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ApiSchema } from "@/shared/api/contract";
 import { routes } from "@/shared/routes";
@@ -63,6 +63,19 @@ export function UploadForm({
   const [resultsByFile, setResultsByFile] = useState<UploadResults>({});
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const restoreFocus = useRef(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const uploadButton = useRef<HTMLButtonElement>(null);
+  const configureLink = useRef<HTMLAnchorElement>(null);
+  const hasFile = files.length > 0;
+
+  useEffect(() => {
+    if (!restoreFocus.current || status === "uploading") return;
+    restoreFocus.current = false;
+    if (document.activeElement !== document.body) return;
+    const next = status === "success" ? configureLink.current : hasFile ? uploadButton.current : picker.current;
+    next?.focus();
+  }, [hasFile, status]);
 
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   const totalPages = Object.values(resultsByFile).reduce(
@@ -78,7 +91,7 @@ export function UploadForm({
       )
     : 0;
 
-  function addFiles(nextFiles: File[]) {
+  function addFiles(nextFiles: File[], fromPicker = false) {
     if (status !== "idle") return;
     if (nextFiles.length !== 1) {
       setError("Для одного заказа можно загрузить только один PDF.");
@@ -89,6 +102,7 @@ export function UploadForm({
       setError(validationError);
       return;
     }
+    restoreFocus.current = fromPicker && !hasFile;
     setFiles([nextFiles[0]]);
     setProgressByFile({});
     setResultsByFile({});
@@ -96,8 +110,9 @@ export function UploadForm({
   }
 
   function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
-    addFiles(Array.from(event.target.files ?? []));
-    event.target.value = "";
+    const input = event.currentTarget;
+    addFiles(Array.from(input.files ?? []), document.activeElement === input);
+    input.value = "";
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
@@ -106,9 +121,10 @@ export function UploadForm({
     addFiles(Array.from(event.dataTransfer.files));
   }
 
-  function removeFile(key: string) {
+  function removeFile(key: string, event: MouseEvent<HTMLButtonElement>) {
     if (status === "uploading" || status === "success" || resultsByFile[key]) return;
 
+    restoreFocus.current = document.activeElement === event.currentTarget;
     const nextFiles = files.filter((file) => fileKey(file) !== key);
     setFiles(nextFiles);
     setProgressByFile((current) => {
@@ -127,9 +143,10 @@ export function UploadForm({
     }
   }
 
-  async function handleUpload() {
+  async function handleUpload(event: MouseEvent<HTMLButtonElement>) {
     if (!files.length || status === "uploading" || status === "success") return;
 
+    restoreFocus.current = document.activeElement === event.currentTarget;
     setStatus("uploading");
     setError(null);
     const completed = { ...resultsByFile };
@@ -200,6 +217,7 @@ export function UploadForm({
             <label className={styles.fileButton}>
               Выбрать файл
               <input
+                ref={picker}
                 className={styles.fileInput}
                 type="file"
                 accept="application/pdf,.pdf"
@@ -251,7 +269,7 @@ export function UploadForm({
                         className={styles.removeButton}
                         type="button"
                         aria-label={`Удалить ${file.name}`}
-                        onClick={() => removeFile(key)}
+                        onClick={(event) => removeFile(key, event)}
                       >
                         Удалить
                       </button>
@@ -280,6 +298,7 @@ export function UploadForm({
                   <p>{formatPageCount(totalPages)}</p>
                 </div>
                 <Link
+                  ref={configureLink}
                   className={styles.primaryButton}
                   href={routes.configure(resultsByFile[fileKey(files[0])].id)}
                 >
@@ -292,6 +311,7 @@ export function UploadForm({
               <div className={styles.queueFooter}>
                 <p>Проверьте, что выбрали нужный файл.</p>
                 <button
+                  ref={uploadButton}
                   className={styles.primaryButton}
                   type="button"
                   disabled={status === "uploading"}

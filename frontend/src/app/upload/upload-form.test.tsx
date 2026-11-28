@@ -63,10 +63,19 @@ describe("UploadForm", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Для одного заказа можно загрузить только один PDF",
     );
-    await user.upload(input, lecturePdf);
+    await user.tab();
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { files: [lecturePdf] } });
     expect(screen.getByText("lecture.pdf")).toBeInTheDocument();
     expect(screen.getByLabelText("Заменить файл")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Загрузить файл" })).toBeEnabled();
+    const upload = screen.getByRole("button", { name: "Загрузить файл" });
+    expect(upload).toBeEnabled();
+    expect(upload).toHaveFocus();
+
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Удалить lecture.pdf" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByLabelText("Выбрать файл")).toHaveFocus();
   });
 
   it("replaces the selected file before upload", async () => {
@@ -106,6 +115,7 @@ describe("UploadForm", () => {
     ]);
     expect(screen.getByRole("link", { name: "Настроить печать" }))
       .toHaveAttribute("href", "/configure/document-lecture.pdf");
+    expect(screen.getByRole("link", { name: "Настроить печать" })).toHaveFocus();
   });
 
   it("explains when the server rejects a damaged PDF", async () => {
@@ -136,7 +146,8 @@ describe("UploadForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Не удалось загрузить файл. Попробуйте ещё раз.",
     );
-    await user.click(screen.getByRole("button", { name: "Повторить загрузку" }));
+    expect(screen.getByRole("button", { name: "Повторить загрузку" })).toHaveFocus();
+    await user.keyboard("{Enter}");
 
     expect(await screen.findByText("Файл загружен")).toBeInTheDocument();
     expect(uploadDocument).toHaveBeenCalledTimes(2);

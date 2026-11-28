@@ -9,9 +9,10 @@ const sprites = {
   tip: { width: 60, height: 92 },
 };
 
-export function PixelSprite({ kind, className }: {
+export function PixelSprite({ kind, className, loading }: {
   kind: keyof typeof sprites;
   className?: string;
+  loading?: "eager" | "lazy";
 }) {
   return (
     <Image
@@ -19,6 +20,7 @@ export function PixelSprite({ kind, className }: {
       className={className ? `${styles.sprite} ${className}` : styles.sprite}
       src={`/images/copyhouse-${kind}.png`}
       {...sprites[kind]}
+      loading={loading}
       unoptimized
     />
   );

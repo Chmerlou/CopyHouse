@@ -1809,7 +1809,8 @@ export interface operations {
                 /** @description Номер страницы. Больше 1000 сервер не принимает, чтобы не строить огромный OFFSET. */
                 page?: components["parameters"]["Page"];
                 limit?: components["parameters"]["Limit"];
-                status?: components["parameters"]["OrderStatusFilter"];
+                /** @description Статус оплаченного заказа; CREATED недоступен точке. */
+                status?: "PAID" | "PRINTING" | "READY" | "ISSUED" | "CANCELLED";
                 createdFrom?: components["parameters"]["CreatedFrom"];
                 createdTo?: components["parameters"]["CreatedTo"];
                 sortBy?: components["parameters"]["SortBy"];

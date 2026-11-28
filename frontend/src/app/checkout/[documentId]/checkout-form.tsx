@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useSyncExternalStore } from "react";
+import { type MouseEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { ApiSchema } from "@/shared/api/contract";
 import { readCheckoutAttempt, readPendingDocuments, readPrintSettings, saveCheckoutAttempt } from "@/shared/order-draft";
 import { routes } from "@/shared/routes";
@@ -41,7 +41,7 @@ export function CheckoutForm({ documentId, createOrder = requestOrder, payOrder 
 }) {
   const router = useRouter();
   const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
-  const document = hydrated
+  const documentInfo = hydrated
     ? readPendingDocuments().find((item) => item.id === documentId) ?? null
     : null;
   const settings = hydrated ? readPrintSettings(documentId) : null;
@@ -49,12 +49,23 @@ export function CheckoutForm({ documentId, createOrder = requestOrder, payOrder 
   const locked = useRef(false);
   const [failure, setFailure] = useState<{ settingsId: string; type: "error" | "recalculate" } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const restoreFocus = useRef(false);
+  const confirmButton = useRef<HTMLButtonElement>(null);
+  const recalculateLink = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    if (!failure || submitting || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    if (document.activeElement === document.body) {
+      (failure.type === "recalculate" ? recalculateLink.current : confirmButton.current)?.focus();
+    }
+  }, [failure, submitting]);
 
   if (!hydrated) {
     return <section className={styles.card} aria-busy="true"><p>Загружаем заказ…</p></section>;
   }
 
-  if (!document || !settings) {
+  if (!documentInfo || !settings) {
     return (
       <section className={styles.card} aria-labelledby="checkout-title">
         <h1 id="checkout-title">Выберите копицентр</h1>
@@ -68,8 +79,9 @@ export function CheckoutForm({ documentId, createOrder = requestOrder, payOrder 
   const settingsId = `${quoteId}:${printPointId}`;
   const error = failure?.settingsId === settingsId ? failure.type : null;
 
-  async function submit() {
+  async function submit(event: MouseEvent<HTMLButtonElement>) {
     if (locked.current || error === "recalculate") return;
+    restoreFocus.current = document.activeElement === event.currentTarget;
     const saved = attempt.current?.settingsId === settingsId ? attempt.current : readCheckoutAttempt(quoteId, printPointId);
     if (!saved?.orderId && Date.parse(expiresAt) <= Date.now()) {
       setFailure({ settingsId, type: "recalculate" });
@@ -105,7 +117,7 @@ export function CheckoutForm({ documentId, createOrder = requestOrder, payOrder 
     <section className={`${styles.card} ${styles.checkoutCard}`} aria-labelledby="checkout-title">
       <h1 id="checkout-title">Проверьте заказ</h1>
       <dl className={styles.summary}>
-        <div><dt>Файл</dt><dd><strong>{document.originalName}</strong><span>{document.pageCount} стр.</span></dd></div>
+        <div><dt>Файл</dt><dd><strong>{documentInfo.originalName}</strong><span>{documentInfo.pageCount} стр.</span></dd></div>
         <div><dt>Точка печати</dt><dd><strong>{settings.printPointName}</strong><span>{settings.printPointAddress}</span></dd></div>
         <div><dt>Печать</dt><dd><strong>{settings.colorMode === "BW" ? "Чёрно-белая" : "Цветная"}, {settings.copies} экз.</strong>
           <span>{money.format(settings.pricePerPage / 100)} за страницу</span></dd></div>
@@ -117,10 +129,10 @@ export function CheckoutForm({ documentId, createOrder = requestOrder, payOrder 
         {error === "recalculate" ? (
           <>
             <p className={styles.error} role="alert">Нужно обновить расчёт. Вернитесь к выбору точки, чтобы проверить цену и доступность.</p>
-            <Link className={styles.secondary} href={routes.orderPoints(documentId)}>Пересчитать цены</Link>
+            <Link ref={recalculateLink} className={styles.secondary} href={routes.orderPoints(documentId)}>Пересчитать цены</Link>
           </>
         ) : (
-          <button className={styles.primary} type="button" disabled={submitting} onClick={submit} aria-describedby="checkout-payment-note">
+          <button ref={confirmButton} className={styles.primary} type="button" disabled={submitting} onClick={submit} aria-describedby="checkout-payment-note">
             {submitting ? "Подтверждаем…" : error ? "Повторить" : "Подтвердить и оплатить"}
           </button>
         )}

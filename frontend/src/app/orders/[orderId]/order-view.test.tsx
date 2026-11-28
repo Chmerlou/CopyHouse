@@ -18,7 +18,7 @@ describe("OrderView", () => {
     expect(screen.getByText("Тестовая оплата. Деньги не спишутся.")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Оплатить заказ" }));
 
-    expect(await screen.findByText("Оплата прошла")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Оплата прошла" })).toHaveFocus();
     expect(screen.getByText("Тестовая оплата прошла без списания денег.")).toBeVisible();
     expect(screen.getByText(/Код выдачи появится/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Мои заказы" })).toHaveAttribute("href", "/account/orders");

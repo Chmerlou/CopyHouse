@@ -13,7 +13,7 @@ export function AuthShell({ scene, children }: {
         <Card className={styles.card}>{children}</Card>
         {scene === "welcome" ? (
           <div className={styles.welcome} aria-hidden="true">
-            <PixelSprite kind="welcome" />
+            <PixelSprite kind="welcome" loading="eager" />
           </div>
         ) : (
           <PixelSprite kind={scene} className={styles.prop} />

@@ -1,13 +1,8 @@
 "use client";
 
-import type { UploadedDocument } from "./upload-form";
+import { saveUploadedDocument } from "@/shared/order-draft";
 import { UploadForm } from "./upload-form";
-import { savePendingDocuments as storePendingDocuments } from "@/shared/order-draft";
 
 export function UploadPageClient() {
-  function savePendingDocuments(documents: UploadedDocument[]) {
-    storePendingDocuments(documents);
-  }
-
-  return <UploadForm onComplete={savePendingDocuments} />;
+  return <UploadForm onComplete={([document]) => { if (document) saveUploadedDocument(document); }} />;
 }

@@ -5,7 +5,7 @@ export const SELECTED_PRINT_POINT_KEY = "copyhouse.selectedPrintPointId";
 const PRINT_SETTINGS_KEY = "copyhouse.printSettings";
 const legacyPdfDecoder = new TextDecoder("utf-8", { fatal: true });
 
-export type PendingDocument = ApiSchema<"Document">;
+export type PendingDocument = ApiSchema<"Document"> & { catalogPrintPointId?: string };
 export type PrintOptions = ApiSchema<"QuoteRequest">;
 
 export type StoredPrintSettings = PrintOptions & {
@@ -31,6 +31,12 @@ export function savePendingDocuments(documents: PendingDocument[]) {
   sessionStorage.setItem(PENDING_DOCUMENTS_KEY, JSON.stringify(documents.slice(0, 1)));
 }
 
+export function saveUploadedDocument(document: ApiSchema<"Document">) {
+  const catalogPrintPointId = readSelectedPrintPointId();
+  savePendingDocuments([{ ...document, catalogPrintPointId: catalogPrintPointId ?? undefined }]);
+  sessionStorage.removeItem(SELECTED_PRINT_POINT_KEY);
+}
+
 export function readPendingDocuments(): PendingDocument[] {
   const value = readStorage(PENDING_DOCUMENTS_KEY);
   if (!Array.isArray(value)) return [];
@@ -41,6 +47,19 @@ export function readPendingDocuments(): PendingDocument[] {
     && typeof (item as PendingDocument).originalName === "string"
     && Number.isInteger((item as PendingDocument).pageCount)
   )).map((item) => ({ ...item, originalName: restoredPdfName(item.originalName) }));
+}
+
+const pointSelectionKey = (documentId?: string) => documentId
+  ? `${SELECTED_PRINT_POINT_KEY}:${documentId}` : SELECTED_PRINT_POINT_KEY;
+
+export function saveSelectedPrintPointId(pointId: string, documentId?: string) {
+  sessionStorage.setItem(pointSelectionKey(documentId), pointId);
+}
+
+export function readSelectedPrintPointId(documentId?: string) {
+  const selected = sessionStorage.getItem(pointSelectionKey(documentId));
+  if (selected || !documentId) return selected;
+  return readPendingDocuments().find((item) => item.id === documentId)?.catalogPrintPointId ?? null;
 }
 
 function restoredPdfName(name: string) {

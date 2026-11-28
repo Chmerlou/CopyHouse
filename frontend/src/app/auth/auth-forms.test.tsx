@@ -29,6 +29,10 @@ describe("LoginForm", () => {
       "Укажите корректный адрес электронной почты",
     );
     expect(screen.getByLabelText("Пароль")).toHaveAccessibleDescription("Введите пароль");
+    expect(screen.getByLabelText("Email")).toHaveFocus();
+    await user.type(screen.getByLabelText("Email"), "client@copyhouse.test");
+    await user.click(screen.getByRole("button", { name: "Войти" }));
+    expect(screen.getByLabelText("Пароль")).toHaveFocus();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -48,6 +52,7 @@ describe("LoginForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Неверный email или пароль");
     expect(screen.getByLabelText("Email")).toHaveValue("client@copyhouse.test");
     expect(screen.getByLabelText("Пароль")).toHaveValue("");
+    expect(screen.getByLabelText("Пароль")).toHaveFocus();
   });
 
   it("returns a client to the protected route and routes provider to its panel", async () => {

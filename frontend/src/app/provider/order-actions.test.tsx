@@ -30,5 +30,6 @@ describe("OrderActions", () => {
     expect(await screen.findByText("Неверный код выдачи")).toBeInTheDocument();
     expect(code).toHaveValue("012345");
     expect(code).toHaveAttribute("aria-invalid", "true");
+    expect(code).toHaveFocus();
   });
 });

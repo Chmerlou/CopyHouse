@@ -2,8 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   readPendingDocuments,
   readPrintSettings,
+  readSelectedPrintPointId,
   savePendingDocuments,
   savePrintSettings,
+  saveSelectedPrintPointId,
+  saveUploadedDocument,
 } from "./order-draft";
 
 const documents = [
@@ -38,6 +41,18 @@ describe("order draft storage", () => {
     savePendingDocuments([{ ...documents[0], originalName: damagedName }]);
 
     expect(readPendingDocuments()[0].originalName).toBe(originalName);
+  });
+
+  it("uses a catalog selection for one upload and keeps later order choices scoped to their document", () => {
+    saveSelectedPrintPointId("catalog-point");
+    saveUploadedDocument(documents[0]);
+    expect(readSelectedPrintPointId(documents[0].id)).toBe("catalog-point");
+
+    saveSelectedPrintPointId("other-point", documents[0].id);
+    expect(readSelectedPrintPointId(documents[0].id)).toBe("other-point");
+    saveUploadedDocument(documents[1]);
+    expect(readSelectedPrintPointId(documents[1].id)).toBeNull();
+    expect(readPendingDocuments()).toEqual([documents[1]]);
   });
 
   it("saves settings independently for each document", () => {

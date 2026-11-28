@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { ApiSchema } from "@/shared/api/contract";
 import {
   type FieldErrors,
@@ -17,6 +17,19 @@ import styles from "./auth.module.css";
 
 type ErrorBody = Pick<ApiSchema<"Error">, "code" | "message">;
 
+function useFieldValidation() {
+  const form = useRef<HTMLFormElement>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
+
+  useEffect(() => {
+    if (Object.keys(errors).length) {
+      form.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus();
+    }
+  }, [errors]);
+
+  return { form, errors, setErrors };
+}
+
 export function LoginForm({ returnTo, initialEmail = "", city }: {
   returnTo: string | null;
   initialEmail?: string;
@@ -25,7 +38,8 @@ export function LoginForm({ returnTo, initialEmail = "", city }: {
   const router = useRouter();
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
-  const [errors, setErrors] = useState<FieldErrors>({});
+  const passwordInput = useRef<HTMLInputElement>(null);
+  const { form, errors, setErrors } = useFieldValidation();
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const registerQuery = new URLSearchParams({ returnTo: safeReturnTo(returnTo) });
@@ -41,6 +55,8 @@ export function LoginForm({ returnTo, initialEmail = "", city }: {
     setMessage(null);
     if (Object.keys(nextErrors).length) return;
 
+    const focused = document.activeElement;
+    const submittedWithFocus = event.currentTarget.contains(focused);
     setIsSubmitting(true);
     try {
       const response = await fetch("/api/auth/login", {
@@ -50,7 +66,12 @@ export function LoginForm({ returnTo, initialEmail = "", city }: {
       });
       const body = await response.json() as { user: ApiSchema<"User"> } | ErrorBody;
       if (!response.ok || !("user" in body)) {
-        if (response.status === 401) setPassword("");
+        if (response.status === 401) {
+          setPassword("");
+          if (submittedWithFocus && (document.activeElement === focused || document.activeElement === document.body)) {
+            passwordInput.current?.focus();
+          }
+        }
         setMessage(response.status === 401
           ? "Неверный email или пароль"
           : "Не удалось войти. Попробуйте ещё раз.");
@@ -70,7 +91,7 @@ export function LoginForm({ returnTo, initialEmail = "", city }: {
   }
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit} noValidate>
+    <form ref={form} className={styles.form} onSubmit={handleSubmit} noValidate>
       <Field
         label="Email"
         name="email"
@@ -81,6 +102,7 @@ export function LoginForm({ returnTo, initialEmail = "", city }: {
         onChange={(event) => setEmail(event.target.value)}
       />
       <Field
+        ref={passwordInput}
         label="Пароль"
         name="password"
         type="password"
@@ -106,7 +128,7 @@ export function RegisterForm({ returnTo, initialCity = "" }: { returnTo: string 
   const [password, setPassword] = useState("");
   const [city, setCity] = useState(typeof initialCity === "string" ? initialCity.trim().slice(0, 100) : "");
   const [role, setRole] = useState<RegisterRole>("CLIENT");
-  const [errors, setErrors] = useState<FieldErrors>({});
+  const { form, errors, setErrors } = useFieldValidation();
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -149,7 +171,7 @@ export function RegisterForm({ returnTo, initialCity = "" }: { returnTo: string 
   }
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit} noValidate>
+    <form ref={form} className={styles.form} onSubmit={handleSubmit} noValidate>
       <fieldset className={styles.roleGroup}>
         <legend>Тип аккаунта</legend>
         <label>
